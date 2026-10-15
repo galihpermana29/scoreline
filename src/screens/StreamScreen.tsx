@@ -1,0 +1,424 @@
+import { motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import type { Match } from "../domain/match";
+import { matchLabel } from "../domain/match";
+import { formatLongDate, formatTime } from "../lib/format";
+import { StatusBadge } from "../components/tv";
+import { Crest, Notice } from "../components/ui";
+import { sourceUrl } from "../lib/route";
+import { useEntryOrigin } from "../lib/useEntryOrigin";
+
+/**
+ * Simulated watch page. It mirrors the feed's own deep-link shape
+ * (/{lang}/{sport}/{competitionSlug}-{id}/{matchSlug}.html). The simulated
+ * player is the default view; pressing play mounts the real match page from
+ * the source site as a sandboxed iframe (verified embeddable 2026-10-16: no
+ * X-Frame-Options/frame-ancestors, and its internal entry -> mirror redirect
+ * chain runs fine inside a frame, nesting its own gated player with the
+ * correct Referer). Sandboxing allows scripts and same-origin storage so the
+ * player boots, but withholds top-navigation and popups so the embedded
+ * site's ads cannot hijack this tab. Stopping unmounts the frame, which also
+ * tears down the stream.
+ *
+ * Fullscreen is ours, not theirs (verified 2026-10-16): the embedded player's
+ * own fullscreen button calls requestFullscreen() from inside a doubly
+ * nested cross-origin frame (ours -> their mirror -> their player), a request
+ * Chrome treats per-origin and can prompt for or silently block - it failed
+ * live even though the whole permission chain (our allow list, their
+ * allowfullscreen, no Permissions-Policy headers) checks out at every level.
+ * This screen instead fullscreens its own .player-shell from the top
+ * document, which needs no permission delegation at all, so the control
+ * works no matter how the source site re-wires its own embed.
+ *
+ * Rotation resilience (2026-10-16): the embed's origin is never hardcoded -
+ * useEntryOrigin resolves the live entry generation at runtime (see
+ * src/api/source-sites.ts), and the ROUTE card link rides the same origin.
+ * A mounted embed that never signals load within the watchdog window is
+ * treated as a mid-session rotation: the origin is re-resolved from scratch
+ * and the frame remounted once on the fresh origin; a second stall swaps the
+ * frame for an explicit retry notice instead of spinning forever. Mirror
+ * rotation inside their embed needs no handling here: their own page hands
+ * itself off to the live mirror client-side, inside the frame.
+ */
+
+/** How long the embed may stay silent after mounting before it counts as stalled. */
+const EMBED_LOAD_TIMEOUT_MS = 15_000;
+const kickHint = (match: Match): string =>
+  match.status.kind === "live"
+    ? "In progress"
+    : match.status.kind === "upcoming"
+      ? "Kick-off"
+      : "Final";
+
+export const StreamScreen = ({ match, href, onExit }: { match: Match; href: string; onExit: () => void }) => {
+  const scored = match.homeScore !== null && match.awayScore !== null && match.status.kind !== "upcoming";
+  const live = match.status.kind === "live";
+  // The live embed only exists while playing; stopped means fully unmounted,
+  // so the stream and its bandwidth stop too.
+  const [playing, setPlaying] = useState(false);
+  const [embedReady, setEmbedReady] = useState(false);
+
+  // Rotation resilience: the embed origin comes from runtime resolution, and
+  // a stalled frame triggers a fresh re-resolution plus a remount (bumping
+  // the epoch) rather than leaving a dead frame on screen. Failures counts
+  // stalls since the last explicit start/retry: 0 healthy, 1 remounting, 2
+  // gave up and shows the retry notice.
+  const { origin, reload: reloadOrigin } = useEntryOrigin();
+  const [embedEpoch, setEmbedEpoch] = useState(0);
+  const [embedFailures, setEmbedFailures] = useState(0);
+
+  // Fullscreen state mirrors document.fullscreenElement so the control stays
+  // in sync even when the browser exits fullscreen on its own (Esc key).
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Set when the browser itself denies a requestFullscreen; browsers give no
+  // event for this, so it is cleared on the next change or after a pause.
+  const [fullscreenDenied, setFullscreenDenied] = useState(false);
+
+  useEffect(() => {
+    const sync = () => {
+      setIsFullscreen(document.fullscreenElement !== null);
+      setFullscreenDenied(false);
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!fullscreenDenied) return;
+    const timer = setTimeout(() => setFullscreenDenied(false), 4000);
+    return () => clearTimeout(timer);
+  }, [fullscreenDenied]);
+
+  const startEmbed = () => {
+    setEmbedReady(false);
+    setEmbedFailures(0);
+    setPlaying(true);
+  };
+  const stopEmbed = () => {
+    setPlaying(false);
+    setEmbedReady(false);
+    setEmbedFailures(0);
+    // Leaving fullscreen on stop returns the page to its normal layout
+    // instead of showing the simulated shell stretched over the screen.
+    if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => {});
+  };
+
+  /**
+   * Remounts the embed frame on a freshly resolved origin. The reload must
+   * settle before the epoch bumps, otherwise the new frame would mount on the
+   * stale origin and never see the rotation.
+   */
+  const remountEmbed = (fresh: boolean) => {
+    setEmbedReady(false);
+    void reloadOrigin(fresh).finally(() => setEmbedEpoch((epoch) => epoch + 1));
+  };
+
+  const retryEmbed = () => {
+    setEmbedFailures(0);
+    remountEmbed(true);
+  };
+
+  // Watchdog: a mounted frame that never signals load within the window is
+  // treated as a dead or rotated origin. First stall re-resolves the origin
+  // from scratch and remounts once; a second stall stops retrying on its own
+  // and swaps the frame for the explicit retry notice.
+  useEffect(() => {
+    if (!playing || embedFailures >= 2 || embedReady) return;
+    const timer = window.setTimeout(() => {
+      if (embedFailures === 0) {
+        setEmbedFailures(1);
+        remountEmbed(true);
+      } else {
+        setEmbedFailures(2);
+      }
+    }, EMBED_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+    // reloadOrigin is a fresh closure each render but stable in behaviour;
+    // epoch is included so a remount re-arms the timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, embedReady, embedEpoch, embedFailures, reloadOrigin]);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement !== null) {
+      void document.exitFullscreen().catch(() => {});
+      return;
+    }
+    shellRef.current?.requestFullscreen().catch(() => setFullscreenDenied(true));
+  };
+
+  return (
+    <div className="stream">
+      <header className="stream-top">
+        <button className="stream-back" onClick={onExit}>
+          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden>
+            <path d="M7 1L3 5.5 7 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Scoreline
+        </button>
+        <span
+          className="stream-flag"
+          title={
+            playing
+              ? embedFailures >= 2
+                ? "The live source is not answering; retrying is available below the player"
+                : "The live player is embedded from the source site, on its currently resolved domain"
+              : "This page plays no video - it is a local simulation"
+          }
+        >
+          {playing ? (embedFailures >= 2 ? "Source unreachable" : "Live embed") : "Simulated stream"}
+        </span>
+      </header>
+
+      <h1 className="stream-title">{matchLabel(match)}</h1>
+      <p className="stream-subtitle">
+        {match.sport} · {match.league.name}
+      </p>
+
+      <div className="player-shell" ref={shellRef}>
+        {playing && embedFailures < 2 ? (
+          <>
+            <iframe
+              key={embedEpoch}
+              className="player-embed"
+              src={sourceUrl(href, origin)}
+              title="Live match player embedded from the source site"
+              sandbox="allow-scripts allow-same-origin"
+              allow="autoplay; fullscreen; encrypted-media"
+              referrerPolicy="no-referrer-when-downgrade"
+              onLoad={() => setEmbedReady(true)}
+            />
+            {!embedReady ? (
+              <div className="player-embed-loading" role="status">
+                <span className="player-note-dot" />
+                {embedFailures === 0 ? "Connecting to live source…" : "Reconnecting to a fresh live source…"}
+              </div>
+            ) : null}
+            <div className="player-embed-bar">
+              <button
+                className="player-embed-fullscreen"
+                onClick={toggleFullscreen}
+                title={
+                  isFullscreen
+                    ? "Leave fullscreen"
+                    : "Fullscreen the live embed (uses this page, not the player's own button)"
+                }
+              >
+                <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden>
+                  {isFullscreen ? (
+                    <path
+                      d="M4 1v3H1M8 1v3h3M4 11V8H1M8 11V8h3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ) : (
+                    <path
+                      d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                </svg>
+                {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              </button>
+              <button
+                className="player-embed-stop"
+                onClick={stopEmbed}
+                title="Stop the live embed and return to the simulated player"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+                  <rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor" />
+                </svg>
+                Stop embed
+              </button>
+            </div>
+            {fullscreenDenied ? (
+              <div className="player-embed-denied" role="status">
+                Fullscreen was blocked by the browser
+              </div>
+            ) : null}
+          </>
+        ) : playing ? (
+          <div className="player-embed-failed">
+            <Notice
+              icon="📡"
+              title="Live source unreachable"
+              body="The source site did not answer even after a fresh domain lookup - the operator may be mid-rotation. The feed keeps updating in the background; retry in a moment."
+              action={{ label: "Retry live source", onClick: retryEmbed }}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="player-art" aria-hidden />
+            <div className="player-scanlines" aria-hidden />
+            <div className="player-grid" aria-hidden />
+
+            <button
+              className="player-play"
+              onClick={startEmbed}
+              aria-label="Play the live match embed"
+              title="Play the live match from the source site"
+            >
+              <svg width="18" height="18" viewBox="0 0 14 14" aria-hidden>
+                <path d="M3.5 2.2 11.8 7 3.5 11.8z" fill="currentColor" />
+              </svg>
+            </button>
+
+            <div className="player-status">
+              {live ? (
+                <span className="badge-live">
+                  <span className="live-dot" />
+                  LIVE
+                </span>
+              ) : (
+                <StatusBadge match={match} />
+              )}
+            </div>
+
+            <div className="player-score">
+              {match.titleOnly ? (
+                <div className="player-event" lang="en">
+                  {match.home.name}
+                </div>
+              ) : (
+                <>
+                  <div className="player-side">
+                    <Crest src={match.home.badge} name={match.home.name} size={64} />
+                    <span className="player-side-name" lang="en">{match.home.name}</span>
+                  </div>
+                  <div className="player-count">
+                    {scored ? (
+                      <div className="player-count-score">
+                        {match.homeScore}
+                        <span className="player-count-divider">–</span>
+                        {match.awayScore}
+                      </div>
+                    ) : (
+                      <div className="player-count-time">{match.kickoff ? formatTime(match.kickoff) : "TBD"}</div>
+                    )}
+                    <span className="player-count-hint">{kickHint(match)}</span>
+                  </div>
+                  <div className="player-side">
+                    <Crest src={match.away.badge} name={match.away.name} size={64} />
+                    <span className="player-side-name" lang="en">{match.away.name}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="player-controls" aria-hidden>
+              <span className="player-control-icon">
+                <svg width="14" height="14" viewBox="0 0 14 14">
+                  <path d="M3 2h3v10H3zM8 2h3v10H8z" fill="currentColor" />
+                </svg>
+              </span>
+              <span className="player-timeline">
+                <span className="player-timeline-live" />
+              </span>
+              <span className="player-control-icon player-control-mute">
+                <svg width="15" height="15" viewBox="0 0 15 15">
+                  <path d="M2 5h3l4-3v11L5 10H2z" fill="currentColor" />
+                  <path d="M11 5c1.2 1.4 1.2 3.6 0 5" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+                </svg>
+              </span>
+              <span className="player-quality">{live ? "1080p" : "—"}</span>
+              <span className="player-control-icon">
+                <svg width="14" height="14" viewBox="0 0 14 14">
+                  <path d="M1 4l6 4 6-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <rect x="1" y="5" width="12" height="7" rx="1.5" fill="currentColor" />
+                </svg>
+              </span>
+            </div>
+
+            <div className="player-note">
+              <span className="player-note-dot" />
+              Simulated feed - no video is streamed here
+            </div>
+          </>
+        )}
+      </div>
+
+      <dl className="stream-meta">
+        {match.kickoff ? (
+          <div className="stream-meta-cell">
+            <dt>{live ? "Started" : "Kick-off"}</dt>
+            <dd>{`${formatLongDate(match.kickoff)}, ${formatTime(match.kickoff)}`}</dd>
+          </div>
+        ) : null}
+        {match.country ? (
+          <div className="stream-meta-cell">
+            <dt>Country</dt>
+            <dd>{match.country}</dd>
+          </div>
+        ) : null}
+        {match.odds ? (
+          <div className="stream-meta-cell">
+            <dt>Odds</dt>
+            <dd>{match.odds.join(" · ")}</dd>
+          </div>
+        ) : null}
+        <div className="stream-meta-cell">
+          <dt>Route</dt>
+          <dd>
+            <a
+              className="stream-route"
+              href={sourceUrl(href, origin)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open the real match page on the source site (new tab)"
+            >
+              {href}
+            </a>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+};
+
+/** Player-shaped skeleton shown while the deep-linked match is still loading from the feed. */
+export const StreamSkeleton = () => (
+  <div className="stream">
+    <header className="stream-top">
+      <span className="stream-back stream-back-skeleton" aria-hidden />
+    </header>
+    <div className="stream-skeleton-title" aria-hidden />
+    <div className="player-shell player-shell-skeleton" aria-label="Loading match">
+      <div className="player-art" aria-hidden />
+      <motion.div
+        className="stream-skeleton-bar"
+        initial={{ opacity: 0.4 }}
+        animate={{ opacity: 1 }}
+        transition={{ repeat: Infinity, repeatType: "reverse", duration: 1 }}
+      />
+    </div>
+  </div>
+);
+
+/** Shown when the deep link doesn't match anything in the current live window. */
+export const StreamUnavailable = ({ onExit }: { onExit: () => void }) => (
+  <div className="stream">
+    <header className="stream-top">
+      <button className="stream-back" onClick={onExit}>
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden>
+          <path d="M7 1L3 5.5 7 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Scoreline
+      </button>
+    </header>
+    <div className="stream-unavailable">
+      <Notice
+        icon="📺"
+        title="Stream unavailable"
+        body="This match is no longer in the live feed - the feed only covers a window around kick-off. Head back to browse what's on right now."
+        action={{ label: "Back to Scoreline", onClick: onExit }}
+      />
+    </div>
+  </div>
+);
