@@ -62,26 +62,6 @@ export const SPORT_ICON: Record<string, string> = {
 
 export type MatchFilter = "all" | "live" | "upcoming" | "finished";
 
-/**
- * Hero artwork per sport - the local files in public/ (added 2026-10-16),
- * each a 16:9 cinematic shot with its own title overlay. The live feed
- * ships no per-match thumbnails in its protobuf response, so every match
- * falls back to its sport's artwork; ids without dedicated art use the
- * multi-sport montage. Every consumer (hero cards, featured carousel,
- * league tiles, match sheet backdrop) degrades gracefully on image error,
- * so a missing file or a future feed-side per-match thumb slot stays safe.
- */
-const SPORT_THUMB: Record<number, string> = {
-  1: "/football-thumbnail.jpg",
-  2: "/nba-thumbnails.jpg",
-  7: "/F1-thumbnail.png",
-  12: "/badminton-thumbnail.jpg",
-  13: "/volleyball-thumbnail.jpg",
-};
-
-/** Local hero artwork for a sport id; the montage for anything else. */
-export const sportThumb = (sportId: number): string => SPORT_THUMB[sportId] ?? "/other-thumbnail.png";
-
 export const matchesFilter = (match: Match, filter: MatchFilter): boolean => {
   if (filter === "all") return true;
   if (filter === "live") return match.status.kind === "live";

@@ -1,0 +1,1025 @@
+/* ---------- watch layer ---------- */
+/* `left` deliberately does not transition: the sidebar auto-collapses in
+   the same commit the layer mounts, and the card -> frame morph measures
+   its target once, so the frame has to be at its final width immediately.
+   The sidebar (above this layer) animates its own width over the top. */
+.watch-layer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-w);
+  z-index: 40;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.watch-backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-w);
+  z-index: -1;
+  background: var(--bg);
+}
+
+.watch-layer-phone {
+  left: 0;
+  background: var(--bg);
+  box-shadow: -24px 0 60px var(--shadow);
+  touch-action: pan-y;
+}
+
+.watch-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: #000;
+  pointer-events: none;
+}
+
+/* iOS back-swipe handle: only the left edge starts the drag. */
+.watch-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 22px;
+  z-index: 8;
+  touch-action: none;
+}
+
+.watch {
+  min-height: 100%;
+  padding: 14px var(--gutter) 56px;
+}
+
+.watch-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  margin-bottom: 12px;
+}
+
+.watch-top-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--label-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stream-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.stream-flag::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stream-flag-live {
+  color: var(--green);
+}
+
+.stream-flag-live::before {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.stream-flag-warn {
+  color: var(--orange);
+}
+
+/* The frame is the screen: full content width, capped so the whole frame
+   plus the header fits the viewport without scrolling. */
+.watch-stage {
+  display: flex;
+  justify-content: center;
+}
+
+.player-shell {
+  position: relative;
+  width: min(100%, calc((100dvh - 190px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0a0a0c;
+  box-shadow:
+    0 30px 70px var(--shadow),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+}
+
+.watch-body {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-top: 20px;
+}
+
+.watch-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 28px;
+}
+
+.watch-headline-text {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.watch-title {
+  margin: 8px 0 0;
+  font: 800 clamp(22px, 2.6vw, 34px) / 1.1 var(--font-display);
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.watch-headline .hero-meta {
+  margin-top: 10px;
+}
+
+.watch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (min-width: 900px) {
+  .watch-toolbar {
+    padding-top: 4px;
+  }
+}
+
+/* Phone: a compact nav bar sits above the frame (never over the player's
+   own chrome); the frame is edge-to-edge and pins to the top while the
+   details scroll underneath. */
+@media (max-width: 739px) {
+  .watch {
+    padding: 0 0 48px;
+  }
+
+  .watch-top {
+    height: 48px;
+    margin: 0;
+    padding: env(safe-area-inset-top) 10px 0;
+    box-sizing: content-box;
+  }
+
+  .watch-top-title {
+    display: none;
+  }
+
+  .watch-top .stream-flag {
+    margin-left: auto;
+  }
+
+  .watch-stage {
+    position: sticky;
+    top: 0;
+    z-index: 7;
+    background: var(--bg);
+  }
+
+  .player-shell {
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .watch-body {
+    padding: 16px var(--gutter) 0;
+  }
+}
+
+/* ---------- player shell interior ---------- */
+.player-shell-skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-art {
+  position: absolute;
+  inset: -12%;
+  background:
+    radial-gradient(45% 60% at 18% 22%, rgba(88, 86, 214, 0.5) 0%, transparent 60%),
+    radial-gradient(50% 55% at 82% 28%, rgba(191, 90, 242, 0.38) 0%, transparent 62%),
+    radial-gradient(60% 70% at 50% 90%, rgba(255, 69, 58, 0.32) 0%, transparent 65%),
+    radial-gradient(40% 50% at 70% 70%, rgba(10, 132, 255, 0.35) 0%, transparent 60%),
+    #0a0a0c;
+  filter: saturate(1.1);
+  animation: player-drift 22s ease-in-out infinite alternate;
+}
+
+@keyframes player-drift {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1.02) rotate(-0.4deg);
+  }
+  to {
+    transform: translate3d(1.5%, 1.2%, 0) scale(1.06) rotate(0.4deg);
+  }
+}
+
+.player-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.player-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 56px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 56px),
+    radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  pointer-events: none;
+}
+
+.player-status {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+}
+
+.player-status .badge-live {
+  box-shadow: 0 4px 18px rgba(255, 69, 58, 0.45);
+}
+
+.player-note {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+@media (max-width: 739px) {
+  .player-note {
+    display: none;
+  }
+}
+
+/* The real match page mounted while playing. It fills the shell, covering
+   the simulated layers; stopping unmounts it, which tears the stream down. */
+.player-embed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0a0a0c;
+}
+
+/* Big centered play affordance on the simulated shell: mounts the embed.
+   z-index lifts it above the decorative score overlay that follows it in
+   DOM order and would otherwise swallow the click. */
+.player-play {
+  position: absolute;
+  left: 50%;
+  top: 68%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+  transition:
+    transform 180ms var(--ease-out),
+    background-color 160ms ease;
+}
+
+.player-play svg {
+  margin-left: 4px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .player-play:hover {
+    transform: translate(-50%, -50%) scale(1.06);
+    background: rgba(255, 255, 255, 0.24);
+  }
+}
+
+.player-play:active {
+  transform: translate(-50%, -50%) scale(0.97);
+}
+
+.player-play:focus-visible {
+  outline: 2px solid var(--label);
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+
+/* The entry -> mirror redirect chain plus player boot takes a few seconds. */
+.player-embed-loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Fullscreen-only control bar overlaid in the frame; outside fullscreen
+   the same controls live on the toolbar under the frame. */
+.player-embed-bar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.player-embed-bar .toolbar-button,
+.player-embed-bar .player-embed-mode button {
+  height: 34px;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+}
+
+.player-embed-bar .player-embed-mode {
+  background: transparent;
+  padding: 0;
+  gap: 1px;
+}
+
+/* Segmented player/page mode switch. */
+.player-embed-mode {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.player-embed-mode button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--label-2);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .player-embed-mode button:hover:not(:disabled) {
+    color: var(--label);
+  }
+}
+
+.player-embed-mode button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.player-embed-mode button.player-embed-mode-on {
+  color: var(--label);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.player-embed-bar .player-embed-mode button.player-embed-mode-on {
+  background: rgba(0, 0, 0, 0.78);
+}
+
+/* The shell drops its letterbox ratio while fullscreen so the embedded page
+   gets every pixel; the pills stay overlaid and usable. */
+.player-shell:fullscreen {
+  width: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.player-shell:-webkit-full-screen {
+  width: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+/* Transient notices: fullscreen denied, direct-player fallback. */
+.player-embed-denied {
+  position: absolute;
+  top: 60px;
+  right: 16px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 32px);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--orange);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* Retry card shown in place of the frame when the live source stalls twice. */
+.player-embed-failed {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0a0a0c;
+}
+
+.player-note-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Scoreboard sits in the upper half; the play control owns the lower. */
+.player-score {
+  position: absolute;
+  inset: 0 0 30%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(20px, 5vw, 64px);
+  padding: 0 5%;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.player-event {
+  max-width: 78%;
+  text-align: center;
+  font-size: clamp(20px, 3.4vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.player-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 26%;
+}
+
+.player-side-name {
+  font-size: clamp(13px, 1.6vw, 20px);
+  font-weight: 600;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.player-side .crest {
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.55));
+}
+
+@media (max-width: 739px) {
+  .player-side .crest {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.player-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-count-score,
+.player-count-time {
+  font-size: clamp(36px, 6.5vw, 76px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.player-count-divider {
+  margin: 0 0.18em;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+}
+
+.player-count-time {
+  font-size: clamp(28px, 4.8vw, 56px);
+}
+
+.player-count-hint {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ---------- meta strip ---------- */
+.stream-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 22px 0 0;
+}
+
+.stream-meta-cell {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+.stream-meta-cell dt {
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stream-meta-cell dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+@media (max-width: 739px) {
+  .stream-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .stream-meta-cell-wide {
+    grid-column: 1 / -1;
+  }
+
+  /* The source cell always spans; if the cells before it are an odd count,
+     the last of them spans too, so no cell sits alone beside a gap. */
+  .stream-meta-cell:nth-child(odd):nth-last-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .watch-headline .hero-eyebrow {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+  }
+
+  .watch-headline .hero-eyebrow .crest {
+    display: inline-block;
+    margin-right: 8px;
+    vertical-align: -4px;
+  }
+}
+
+.stream-route {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--label-2);
+  word-break: break-all;
+}
+
+a.stream-route {
+  display: inline;
+  color: inherit;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+a.stream-route::after {
+  content: " ↗";
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.stream-route:hover {
+    color: var(--label);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.watch .shelf {
+  margin-top: 28px;
+}
+
+.watch .shelf-title,
+.watch .shelf-track {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.watch .shelf-track {
+  scroll-padding-inline: 0;
+}
+
+.watch .shelf-arrow {
+  width: 48px;
+}
+
+@media (max-width: 739px) {
+  .watch .shelf-title {
+    padding: 0;
+  }
+}
+
+.stream-skeleton-title {
+  height: 30px;
+  width: min(420px, 60%);
+  border-radius: 10px;
+  background: var(--fill);
+}
+
+.stream-skeleton-bar {
+  position: relative;
+  width: min(320px, 60%);
+  height: 10px;
+  border-radius: 5px;
+  background: var(--fill-strong);
+}
+
+.stream-unavailable {
+  max-width: 520px;
+  margin: 18vh auto 0;
+  padding: 0 var(--gutter);
+}
+
+/* ---------- detail: sheet (phone) + dialog (desktop) ---------- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - env(safe-area-inset-top) - 10px);
+  overflow: hidden;
+  border-radius: 18px 18px 0 0;
+  background: var(--surface);
+  touch-action: none;
+}
+
+.sheet:focus,
+.dialog:focus {
+  outline: none;
+}
+
+.sheet-grabber-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  height: 24px;
+  cursor: grab;
+}
+
+.sheet-grabber {
+  width: 38px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--label-3);
+}
+
+.sheet .sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.dialog {
+  position: fixed;
+  top: 5vh;
+  left: 50%;
+  z-index: 70;
+  width: min(880px, calc(100vw - 48px));
+  max-height: 90vh;
+  margin-left: max(-440px, calc(-50vw + 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow:
+    0 40px 120px var(--shadow),
+    inset 0 0 0 0.5px var(--stroke-strong);
+}
+
+.detail-hero {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: 460px;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+@media (max-width: 739px) {
+  .detail-hero {
+    aspect-ratio: 1 / 1;
+    max-height: 52dvh;
+  }
+}
+
+.detail-hero-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.detail-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    var(--surface) 0%,
+    color-mix(in srgb, var(--surface) 82%, transparent) 38%,
+    color-mix(in srgb, var(--surface) 20%, transparent) 75%,
+    var(--fade-soft) 100%
+  );
+}
+
+.close-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--material);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  color: var(--label);
+  transition: transform 150ms var(--ease-out);
+}
+
+.close-button:active {
+  transform: scale(0.92);
+}
+
+.close-button:focus-visible {
+  border-radius: 50%;
+}
+
+.detail-hero-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 0 24px 20px;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 620px;
+}
+
+.scoreboard-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.scoreboard-session {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-title {
+  max-width: 100%;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
+.big-score,
+.big-time {
+  font: 800 clamp(34px, 7vw, 56px) / 1 var(--font-rounded);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.big-time {
+  font-size: clamp(28px, 5.5vw, 44px);
+}
+
+.big-score-divider {
+  margin: 0 8px;
+  color: var(--label-3);
+}
+
+.team-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-align: center;
+}
+
+.team-column .crest {
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.5));
+}
+
+.team-column-name {
+  max-width: 100%;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.team-column-name.is-long {
+  font-size: 14px;
+}
+
+.team-column-side {
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.detail-content {
+  padding: 4px 24px 32px;
+}
+
+@media (min-width: 900px) {
+  .detail-content {
+    padding: 4px 36px 40px;
+  }
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.detail-heading {
+  margin: 26px 0 12px;
+  font: 700 20px/1.2 var(--font-display);
+  letter-spacing: -0.2px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.info-cell {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+.info-cell dt {
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.info-cell dd {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* Phone sheet: two columns; the first (kick-off) cell is the long one and
+   spans, and so does a lone trailing cell. */
+@media (max-width: 739px) {
+  .detail-content {
+    padding: 4px 16px 28px;
+  }
+
+  .info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .info-cell:first-child,
+  .info-cell:last-child:nth-child(even) {
+    grid-column: 1 / -1;
+  }
+
+  .info-cell dd {
+    font-size: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-art,
+  .stream-flag-live::before,
+  .player-note-dot,
+  .tile-count::before {
+    animation: none;
+  }
+}

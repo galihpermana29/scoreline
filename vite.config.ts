@@ -1,8 +1,39 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 const RESOLVE_ENDPOINT = "/api/resolve-redirect";
 const PROBE_ENDPOINT = "/api/probe-player";
+const CONFIG_ENDPOINT = "/api/config";
+
+/**
+ * The source-network endpoints live in `.env` (gitignored) and are served to
+ * the app through this middleware, so they are compiled into nothing the
+ * client ships: the JS bundle never contains a hostname, and a fresh clone
+ * contains none either. Without this endpoint (a static production build)
+ * the client runs discovery-only and its caches.
+ */
+const sourceConfigPlugin = (env: Record<string, string>): Plugin => ({
+  name: "source-config",
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      if (req.method !== "GET" || !req.url?.startsWith(CONFIG_ENDPOINT)) {
+        next();
+        return;
+      }
+      const list = (name: string): string[] =>
+        (env[name] ?? "")
+          .split(",")
+          .map((host) => host.trim())
+          .filter((host) => host !== "");
+      sendJson(res, 200, {
+        entryHosts: list("SCORELINE_ENTRY_HOSTS"),
+        redirectingEntryHosts: list("SCORELINE_REDIRECTING_ENTRY_HOSTS"),
+        apiHosts: list("SCORELINE_API_HOSTS"),
+        playerHosts: list("SCORELINE_PLAYER_HOSTS"),
+      });
+    });
+  },
+});
 
 const MAX_HOPS = 5;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -182,7 +213,9 @@ const probePlayerPlugin = (): Plugin => ({
   },
 });
 
-export default defineConfig({
-  plugins: [react(), resolveRedirectPlugin(), probePlayerPlugin()],
-  server: { port: 5188, strictPort: true },
+export default defineConfig(({ mode }) => {
+  // Third name "" reads every variable, not just VITE_*-prefixed ones: the
+  // endpoint lists must stay server-side, never inlined into the bundle.
+  const env = loadEnv(mode, process.cwd(), "");
+  return { plugins: [react(), sourceConfigPlugin(env), resolveRedirectPlugin(), probePlayerPlugin()], server: { port: 5188, strictPort: true } };
 });

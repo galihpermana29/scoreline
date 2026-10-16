@@ -1,4 +1,3 @@
-import { DEFAULT_PLAYER_HOSTS } from "./source-sites";
 import { probePlayerUrl } from "./probe";
 
 /**
@@ -79,7 +78,7 @@ export const pickPlayerUrl = async (
   hosts: readonly string[],
   source: Omit<PlayerSource, "host">,
 ): Promise<PlayerPick> => {
-  const candidates = hosts.length > 0 ? hosts : DEFAULT_PLAYER_HOSTS;
+  const candidates = hosts; // resolvePlayerHosts already degrades to env-seeded defaults.
   let refused = false;
   for (const host of candidates) {
     const url = playerUrl({ ...source, host });

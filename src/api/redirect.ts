@@ -4,8 +4,8 @@
  * Why a resolver exists at all: browsers deliberately hide cross-origin
  * redirect chains from page JavaScript. Performance Navigation zeroes
  * redirectCount/redirectStart/redirectEnd when the chain crosses origins
- * (verified live against ***REMOVED***18.casa on 2026-10-16: a 301 hop from
- * ***REMOVED***17.lol reports redirectCount 0), a cross-origin fetch of the old
+ * (verified live on 2026-10-16: a 301 hop from
+ * the previous generation reports redirectCount 0), a cross-origin fetch of the old
  * domain is either CORS-blocked or returns an opaque response whose url is
  * empty, and an iframe's final location is unreadable across origins. So the
  * hop chain is walked outside the browser and exposed same-origin at

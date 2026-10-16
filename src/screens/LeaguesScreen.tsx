@@ -1,72 +1,82 @@
-import { AnimatePresence, motion } from "motion/react";
 import { useMemo } from "react";
-import { Artwork, MatchCard, Shelf } from "../components/tv";
-import { Chevron, Crest, Notice } from "../components/ui";
-import { groupByLeague, byKickoff, sportThumb, type League, type Match } from "../domain/match";
-
-const FADE = { duration: 0.3, ease: [0.23, 1, 0.32, 1] } as const;
+import { Artwork, LeagueTile, MatchCard, Shelf, hueFor, type OpenMatch } from "../components/tv";
+import { Icon } from "../components/icons";
+import { Crest, Notice } from "../components/ui";
+import { sportPriority } from "../domain/categories";
+import { sportThumb } from "../domain/artwork";
+import { groupByLeague, byKickoff, type League, type Match } from "../domain/match";
+import { back, browsePath, navigate } from "../lib/router";
 
 type LeagueGroup = { league: League; matches: Match[] };
 
 export const LeaguesScreen = ({
   matches,
-  league,
-  onOpenLeague,
-  onSelect,
+  leagueId,
+  onOpen,
+  onMore,
 }: {
   matches: readonly Match[];
-  league: League | null;
-  onOpenLeague: (league: League | null) => void;
-  onSelect: (match: Match) => void;
-}) => (
-  <AnimatePresence mode="wait" initial={false}>
-    <motion.div
-      key={league?.id ?? "list"}
-      initial={{ opacity: 0, scale: 0.99 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 1.01 }}
-      transition={FADE}
-    >
-      {league ? (
-        <LeagueDetail league={league} matches={matches} onBack={() => onOpenLeague(null)} onSelect={onSelect} />
-      ) : (
-        <LeagueGrid matches={matches} onOpen={onOpenLeague} />
-      )}
-    </motion.div>
-  </AnimatePresence>
-);
+  leagueId: string | null;
+  onOpen: OpenMatch;
+  onMore: (match: Match) => void;
+}) => {
+  const league = useMemo(
+    () => (leagueId === null ? null : (matches.find((match) => match.league.id === leagueId)?.league ?? null)),
+    [matches, leagueId],
+  );
+  if (leagueId !== null && league === null)
+    return (
+      <div className="screen screen-padded">
+        <Notice
+          icon="🗓️"
+          title="League not in the feed right now"
+          body="The feed only lists competitions with events around their start time."
+          action={{ label: "All leagues", onClick: () => navigate(browsePath({ kind: "leagues", leagueId: null })) }}
+        />
+      </div>
+    );
+  return league ? (
+    <LeagueDetail league={league} matches={matches} onOpen={onOpen} onMore={onMore} />
+  ) : (
+    <LeagueGrid matches={matches} />
+  );
+};
 
-const LeagueGrid = ({ matches, onOpen }: { matches: readonly Match[]; onOpen: (league: League) => void }) => {
+/** Leagues grouped by sport, pinned sports first, as square tiles. */
+const LeagueGrid = ({ matches }: { matches: readonly Match[] }) => {
   const groups = useMemo(() => {
-    const bySport = new Map<string, LeagueGroup[]>();
+    const bySport = new Map<string, { sportId: number | undefined; leagues: LeagueGroup[] }>();
     for (const group of groupByLeague(matches)) {
       const sport = group.matches[0]?.sport ?? "Other";
-      const shelf = bySport.get(sport) ?? [];
-      shelf.push(group);
-      bySport.set(sport, shelf);
+      const entry = bySport.get(sport) ?? { sportId: group.matches[0]?.sportId, leagues: [] };
+      entry.leagues.push(group);
+      bySport.set(sport, entry);
     }
-    return [...bySport.entries()];
+    return [...bySport.entries()].sort(
+      (a, b) => sportPriority(a[1].sportId) - sportPriority(b[1].sportId) || b[1].leagues.length - a[1].leagues.length,
+    );
   }, [matches]);
 
   return (
     <div className="screen screen-padded">
-      <h1 className="page-title">Leagues</h1>
+      <header className="page-head">
+        <h1 className="page-title">Leagues</h1>
+        <p className="page-sub">Every competition in the feed right now, by sport.</p>
+      </header>
       {groups.length === 0 ? (
         <Notice icon="📅" title="No leagues on right now" body="The live feed refreshes every minute." />
       ) : null}
-      {groups.map(([sport, leagues]) => (
-        <Shelf key={sport} title={sport} count={leagues.length}>
+      {groups.map(([sport, { leagues }]) => (
+        <Shelf key={sport} title={sport} count={leagues.length} variant="tiles">
           {leagues.map((group) => {
             const country = group.matches.find((match) => match.country)?.country ?? null;
-            const sportId = group.matches[0]?.sportId;
             return (
-              <Tile
+              <LeagueTile
                 key={group.league.id}
-                title={group.league.name}
+                league={group.league}
                 subtitle={country ?? sport}
-                badge={group.league.badge}
-                thumb={sportId !== undefined ? sportThumb(sportId) : null}
-                onClick={() => onOpen(group.league)}
+                count={group.matches.filter((match) => match.status.kind === "live").length}
+                onClick={() => navigate(browsePath({ kind: "leagues", leagueId: group.league.id }))}
               />
             );
           })}
@@ -76,106 +86,81 @@ const LeagueGrid = ({ matches, onOpen }: { matches: readonly Match[]; onOpen: (l
   );
 };
 
-const Tile = ({
-  title,
-  subtitle,
-  badge,
-  thumb,
-  onClick,
-}: {
-  title: string;
-  subtitle: string;
-  badge: string | null;
-  thumb: string | null;
-  onClick: () => void;
-}) => (
-  <div className="card-cell">
-    <button className="card tile" onClick={onClick} aria-label={title}>
-      <span className="card-surface">
-        {/* Same artwork family as the match cards: the sport's hero art
-            behind the league crest, falling back to the blurred-badge look
-            when there is no art for the sport or the file fails. */}
-        <Artwork
-          src={thumb}
-          fallback={badge ? <img className="tile-backdrop" src={badge} alt="" aria-hidden loading="lazy" /> : null}
-        />
-        <span className="card-scrim" aria-hidden />
-        <span className="tile-badge">
-          <Crest src={badge} name={title} size={96} />
-        </span>
-        <span className="card-shine" aria-hidden />
-      </span>
-    </button>
-    <div className="card-caption">
-      <div className="card-title">{title}</div>
-      <div className="card-meta">{subtitle}</div>
-    </div>
-  </div>
-);
-
 const LeagueDetail = ({
   league,
   matches,
-  onBack,
-  onSelect,
+  onOpen,
+  onMore,
 }: {
   league: League;
   matches: readonly Match[];
-  onBack: () => void;
-  onSelect: (match: Match) => void;
+  onOpen: OpenMatch;
+  onMore: (match: Match) => void;
 }) => {
   const all = useMemo(() => [...matches].filter((match) => match.league.id === league.id).sort(byKickoff), [matches, league]);
   const live = all.filter((match) => match.status.kind === "live");
   const upcoming = all.filter((match) => match.status.kind === "upcoming");
   const finished = [...all.filter((match) => match.status.kind === "finished")].reverse();
   const sportId = all[0]?.sportId;
+  const hue = hueFor(league.id + league.name);
 
   return (
     <div className="screen">
-      <section className="league-hero">
-        {/* The sport's hero art full-bleed, like the main hero; the blurred
-            league badge stays as the fallback when no art applies. */}
-        <Artwork
-          src={sportId !== undefined ? sportThumb(sportId) : null}
-          eager
-          fallback={
-            league.badge ? <img className="league-hero-backdrop" src={league.badge} alt="" aria-hidden /> : null
-          }
-        />
+      <section className="league-hero" style={{ background: `hsl(${hue} 40% 22%)` }}>
+        <Artwork src={sportId !== undefined ? sportThumb(sportId, league.id) : null} eager fallback={null} />
         <div className="hero-scrim" aria-hidden />
-        <button className="back-pill" onClick={onBack}>
-          <Chevron direction="left" />
+        <button className="back-pill" onClick={() => back(browsePath({ kind: "leagues", leagueId: null }))}>
+          <Icon name="chevron-left" size={16} />
           Leagues
         </button>
         <div className="league-hero-content">
-          <Crest src={league.badge} name={league.name} size={112} />
+          <span className="league-hero-crest" style={{ background: `hsl(${hue} 42% 36%)` }}>
+            <Crest src={league.badge} name={league.name} size={96} />
+          </span>
           <div>
             <div className="hero-eyebrow">
-              {all[0]?.sport ?? "Live"} · {all.length} match{Math.abs(all.length) === 1 ? "" : "es"}
+              {all[0]?.sport ?? "Live"}
+              {all[0]?.country ? ` · ${all[0].country}` : ""}
             </div>
             <h1 className="hero-title">{league.name}</h1>
+            <div className="hero-meta">
+              {live.length > 0 ? (
+                <span className="badge badge-live">
+                  <span className="live-dot" aria-hidden />
+                  {live.length} live
+                </span>
+              ) : null}
+              <span className="hero-meta-dim">
+                {all.length} match{all.length === 1 ? "" : "es"}
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
       {live.length ? (
-        <Shelf title="Live" count={live.length}>
-          {live.map((match) => (
-            <MatchCard key={match.id} match={match} onSelect={onSelect} />
-          ))}
-        </Shelf>
+        <section className="grid-section">
+          <h2 className="shelf-title">
+            Live <span className="shelf-count">{live.length}</span>
+          </h2>
+          <div className="card-grid">
+            {live.map((match) => (
+              <MatchCard key={match.id} match={match} layoutId={`art-lg-live-${match.id}`} onOpen={onOpen} onMore={onMore} />
+            ))}
+          </div>
+        </section>
       ) : null}
       {upcoming.length ? (
         <Shelf title="Up Next" count={upcoming.length}>
           {upcoming.map((match) => (
-            <MatchCard key={match.id} match={match} onSelect={onSelect} />
+            <MatchCard key={match.id} match={match} layoutId={`art-lg-up-${match.id}`} onOpen={onOpen} onMore={onMore} />
           ))}
         </Shelf>
       ) : null}
       {finished.length ? (
         <Shelf title="Latest Results" count={finished.length}>
           {finished.map((match) => (
-            <MatchCard key={match.id} match={match} onSelect={onSelect} />
+            <MatchCard key={match.id} match={match} layoutId={`art-lg-res-${match.id}`} onOpen={onOpen} onMore={onMore} />
           ))}
         </Shelf>
       ) : null}

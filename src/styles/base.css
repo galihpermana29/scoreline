@@ -1,0 +1,562 @@
+/* ---------- tokens ----------
+
+   Two appearances keyed off html[data-theme]. Light is the default and
+   follows the iOS system palette; dark is the Apple TV look. Everything
+   downstream is either one of these tokens or derived from one with
+   color-mix, so a theme is a palette swap, not a second stylesheet.
+   Surfaces that sit on artwork or video (heroes, cards, the player) pin the
+   dark palette locally - see the surface list below. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f2f2f7;
+  --surface-2: #e5e5ea;
+  --label: #000000;
+  --label-2: rgba(60, 60, 67, 0.6);
+  --label-3: rgba(60, 60, 67, 0.36);
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-strong: rgba(120, 120, 128, 0.2);
+  --fill-hover: rgba(120, 120, 128, 0.08);
+  --fill-pressed: rgba(120, 120, 128, 0.16);
+  --fill-selected: rgba(120, 120, 128, 0.18);
+  --hairline: rgba(60, 60, 67, 0.16);
+  --hairline-soft: rgba(60, 60, 67, 0.08);
+  --stroke: rgba(0, 0, 0, 0.06);
+  --stroke-strong: rgba(0, 0, 0, 0.1);
+  --red: #ff3b30;
+  --orange: #ff9500;
+  --green: #34c759;
+  --material: rgba(250, 250, 252, 0.72);
+  --material-heavy: rgba(246, 246, 248, 0.88);
+  --material-active: rgba(255, 255, 255, 0.94);
+  --bar: rgba(249, 249, 251, 0.84);
+  --scrim: rgba(0, 0, 0, 0.4);
+  /* Hero / banner fades: the poster floor, strong near the text, soft toward
+     the picture. Always dark - the heroes are art surfaces in both themes;
+     in light mode the floor meets the white page on a clean edge. */
+  --fade-base: rgba(0, 0, 0, 0.8);
+  --fade-strong: rgba(0, 0, 0, 0.74);
+  --fade-soft: rgba(0, 0, 0, 0.16);
+  --fade-side: rgba(0, 0, 0, 0.5);
+  --shadow: rgba(0, 0, 0, 0.22);
+  --shadow-soft: rgba(0, 0, 0, 0.14);
+  --segment-thumb: #ffffff;
+  /* Primary button is the inverse of the page. */
+  --accent-bg: #000000;
+  --accent-bg-hover: #1c1c1e;
+  --accent-fg: #ffffff;
+  --focus-ring: #0a84ff;
+  /* Strong ease-out (expo-ish): entrances, reveals, hover lifts. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Steep-start iOS sheet curve for anything sliding from an edge. */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Sidebar collapse/expand: the iOS sheet curve front-loads the travel so
+     the panel feels responsive, then settles. One timing is shared by
+     everything that follows the width, so the edges stay glued together. */
+  --sidebar-dur: 380ms;
+  --sidebar-curve: var(--ease-sheet);
+  --sidebar-ease: var(--sidebar-dur) var(--sidebar-curve);
+  --sidebar-w: 0px;
+  /* Where the browse surface starts; follows the user's choice, not the
+     watch screen's auto-collapse. */
+  --content-inset: 0px;
+  --tabbar-h: 0px;
+  --gutter: 16px;
+  --card-w: min(72vw, 300px);
+  --tile-w: 124px;
+  --shelf-gap: 12px;
+  --radius-card: 12px;
+  --font:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #141416;
+  --surface-2: #1c1c1f;
+  --label: #ffffff;
+  --label-2: rgba(255, 255, 255, 0.64);
+  --label-3: rgba(255, 255, 255, 0.4);
+  --fill: rgba(255, 255, 255, 0.08);
+  --fill-strong: rgba(255, 255, 255, 0.14);
+  --fill-hover: rgba(255, 255, 255, 0.05);
+  --fill-pressed: rgba(255, 255, 255, 0.09);
+  --fill-selected: rgba(255, 255, 255, 0.13);
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-soft: rgba(255, 255, 255, 0.05);
+  --stroke: rgba(255, 255, 255, 0.06);
+  --stroke-strong: rgba(255, 255, 255, 0.12);
+  --red: #ff453a;
+  --orange: #ff9f0a;
+  --green: #30d158;
+  --material: rgba(28, 28, 30, 0.66);
+  --material-heavy: rgba(20, 20, 22, 0.86);
+  --material-active: rgba(50, 50, 54, 0.84);
+  --bar: rgba(16, 16, 18, 0.82);
+  --scrim: rgba(0, 0, 0, 0.62);
+  /* The poster floor dissolves into the black page. */
+  --fade-base: #000000;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --shadow-soft: rgba(0, 0, 0, 0.4);
+  --segment-thumb: rgba(255, 255, 255, 0.14);
+  --accent-bg: #ffffff;
+  --accent-bg-hover: #f2f2f2;
+  --accent-fg: #000000;
+  --focus-ring: #ffffff;
+}
+
+/* Anything drawn over artwork or video keeps the dark palette whatever the
+   page is: white type on a dark scrim reads on any photo. Heroes and
+   banners included - in light mode they sit on the page like a poster. */
+.hero,
+.banner,
+.league-hero,
+.card-surface,
+.wide-surface,
+.tile,
+.promo,
+.player-shell {
+  --label: #ffffff;
+  --label-2: rgba(255, 255, 255, 0.64);
+  --label-3: rgba(255, 255, 255, 0.4);
+  --fill: rgba(255, 255, 255, 0.08);
+  --fill-strong: rgba(255, 255, 255, 0.14);
+  --fill-hover: rgba(255, 255, 255, 0.05);
+  --fill-pressed: rgba(255, 255, 255, 0.09);
+  --material: rgba(28, 28, 30, 0.66);
+  --material-active: rgba(50, 50, 54, 0.84);
+  --surface: #141416;
+  --surface-2: #1c1c1f;
+  --bg: #000000;
+  --accent-bg: #ffffff;
+  --accent-bg-hover: #f2f2f2;
+  --accent-fg: #000000;
+  color: #ffffff;
+}
+
+/* Phone: bottom tab bar, no sidebar. */
+@media (max-width: 739px) {
+  :root {
+    --tabbar-h: calc(50px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Tablet: icon rail. */
+@media (min-width: 740px) {
+  :root {
+    --sidebar-w: 76px;
+    --content-inset: 76px;
+    --gutter: 28px;
+    --card-w: clamp(220px, 26vw, 300px);
+    --tile-w: 140px;
+    --shelf-gap: 16px;
+  }
+}
+
+/* Desktop: full sidebar, collapsible to the rail width. */
+@media (min-width: 1100px) {
+  :root {
+    --sidebar-w: 248px;
+    --content-inset: 248px;
+    --gutter: clamp(32px, 3.4vw, 56px);
+    --card-w: clamp(232px, 18.5vw, 340px);
+    --tile-w: 150px;
+    --shelf-gap: 20px;
+    --radius-card: 12px;
+  }
+
+  .frame.is-rail {
+    --sidebar-w: 76px;
+  }
+
+  .frame.is-rail-browse {
+    --content-inset: 76px;
+  }
+}
+
+/* ---------- base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--label);
+  font: 16px/1.35 var(--font);
+  letter-spacing: -0.1px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2.5px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+img {
+  display: block;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ---------- type ---------- */
+.page-head {
+  padding: 0 var(--gutter);
+  margin-bottom: 8px;
+}
+
+.page-title {
+  margin: 0;
+  font: 800 clamp(30px, 3.2vw, 44px) / 1.08 var(--font-display);
+  letter-spacing: -0.022em;
+}
+
+.page-sub {
+  margin: 6px 0 0;
+  color: var(--label-2);
+  font-size: 15px;
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+
+.footnote {
+  margin: 40px var(--gutter) 0;
+  color: var(--label-3);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+/* ---------- buttons ---------- */
+.button-primary,
+.button-tinted {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    transform 150ms var(--ease-out),
+    background-color 150ms ease;
+}
+
+.button-primary {
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+}
+
+.button-tinted {
+  background: var(--fill-strong);
+  color: var(--label);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button-primary:hover {
+    background: var(--accent-bg-hover);
+  }
+
+  .button-tinted:hover {
+    background: color-mix(in srgb, var(--fill-strong), var(--label) 8%);
+  }
+}
+
+.button-primary:active,
+.button-tinted:active {
+  transform: scale(0.97);
+}
+
+.toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--fill);
+  color: var(--label);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .toolbar-button:hover {
+    background: var(--fill-strong);
+  }
+}
+
+.toolbar-button:active {
+  transform: scale(0.97);
+}
+
+/* Floating translucent back control. */
+.back-pill {
+  position: absolute;
+  top: 14px;
+  left: var(--gutter);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 14px 0 8px;
+  border-radius: 999px;
+  background: var(--material);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  box-shadow: inset 0 0 0 0.5px var(--stroke-strong);
+  font-size: 15px;
+  font-weight: 600;
+  transition:
+    transform 150ms var(--ease-out),
+    background-color 150ms ease;
+}
+
+.back-pill-static {
+  position: static;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .back-pill:hover {
+    background: var(--material-active);
+  }
+}
+
+.back-pill:active {
+  transform: scale(0.96);
+}
+
+/* ---------- badges ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge-live {
+  background: var(--red);
+}
+
+.badge-warning {
+  background: var(--orange);
+  color: #000;
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- crests ---------- */
+.crest {
+  flex: none;
+  object-fit: contain;
+}
+
+img.crest {
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+}
+
+img.crest.is-loaded {
+  opacity: 1;
+}
+
+.crest-fallback {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--fill-strong);
+  color: var(--label-2);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* ---------- skeleton ---------- */
+.skeleton {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--fill) 0%, var(--fill-strong) 50%, var(--fill) 100%) 0 0 / 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-title {
+  width: 180px;
+  height: 22px;
+  margin: 0 var(--gutter);
+}
+
+.skeleton-card {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-card);
+}
+
+.skeleton-line {
+  width: 80%;
+  height: 13px;
+  margin-top: 12px;
+}
+
+.skeleton-line.short {
+  width: 50%;
+  margin-top: 7px;
+}
+
+/* ---------- notices ---------- */
+.notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 56px 24px;
+  text-align: center;
+}
+
+.notice-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.notice-title {
+  margin: 12px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.notice-body {
+  max-width: 360px;
+  margin: 6px 0 0;
+  color: var(--label-2);
+  font-size: 15px;
+  text-wrap: pretty;
+}
+
+.notice .button-tinted {
+  margin-top: 18px;
+}
+
+/* ---------- artwork ---------- */
+.art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+img.art {
+  opacity: 0;
+  transition: opacity 400ms var(--ease-out);
+}
+
+img.art.is-loaded {
+  opacity: 1;
+}
+
+.art-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8%;
+}
+
+.art-vs {
+  color: var(--label-3);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* ---------- appearance switch ---------- */
+/* The theme swap runs as a document crossfade (theme.ts wraps it in a view
+   transition); this just sets the pace. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: ease;
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sidebar-ease: 0s;
+  }
+
+  .live-dot,
+  .skeleton {
+    animation: none;
+  }
+}

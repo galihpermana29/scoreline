@@ -7,6 +7,8 @@ import { formatLongDate, formatTime } from "../lib/format";
 import { useMediaQuery, DESKTOP_QUERY } from "../lib/useMediaQuery";
 import { StatusBadge } from "./tv";
 import { Crest } from "./ui";
+import { Icon } from "./icons";
+import { downloadCalendarEvent } from "../lib/calendar";
 
 const SHEET_SPRING = { type: "spring", bounce: 0, duration: 0.42 } as const;
 
@@ -134,9 +136,7 @@ const SheetBody = ({
         {backdrop ? <img className="detail-hero-art" src={backdrop} alt="" aria-hidden /> : null}
         <div className="detail-hero-scrim" aria-hidden />
         <button className="close-button" onClick={onClose} aria-label="Close">
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
+          <Icon name="close" size={14} />
         </button>
         <div className="detail-hero-content">
           <div className="hero-eyebrow">
@@ -189,14 +189,13 @@ const SheetBody = ({
           <div className="detail-actions">
             {canWatch(match) ? (
               <button className="button-primary" onClick={() => onWatch(match)}>
-                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden style={{ marginRight: 8 }}>
-                  <path d="M2 1.5l10 5.5-10 5.5z" fill="currentColor" />
-                </svg>
+                <Icon name="play" size={14} />
                 Watch Stream
               </button>
             ) : null}
             {upcoming && match.kickoff ? (
               <button className="button-tinted" onClick={() => downloadCalendarEvent(match)}>
+                <Icon name="calendar" size={16} />
                 Add to Calendar
               </button>
             ) : null}
@@ -242,33 +241,3 @@ const Detail = ({ label, value }: { label: string; value: string }) => (
     <dd>{value}</dd>
   </div>
 );
-
-const icsDate = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-
-const icsText = (value: string) => value.replace(/[\\,;]/g, (char) => `\\${char}`).replace(/\n/g, "\\n");
-
-const downloadCalendarEvent = (match: Match) => {
-  if (!match.kickoff) return;
-  const end = new Date(match.kickoff.getTime() + 2 * 60 * 60 * 1000);
-  const body = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Scoreline//EN",
-    "BEGIN:VEVENT",
-    `UID:${match.id}@scoreline.local`,
-    `DTSTAMP:${icsDate(new Date())}`,
-    `DTSTART:${icsDate(match.kickoff)}`,
-    `DTEND:${icsDate(end)}`,
-    `SUMMARY:${icsText(matchLabel(match))}`,
-    `DESCRIPTION:${icsText(match.league.name)}`,
-    match.venue ? `LOCATION:${icsText(match.venue)}` : null,
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ]
-    .filter(Boolean)
-    .join("\r\n");
-  const url = URL.createObjectURL(new Blob([body], { type: "text/calendar" }));
-  const link = Object.assign(document.createElement("a"), { href: url, download: `${match.home.name}-vs-${match.away.name}.ics` });
-  link.click();
-  URL.revokeObjectURL(url);
-};

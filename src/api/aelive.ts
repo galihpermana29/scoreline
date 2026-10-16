@@ -1,5 +1,5 @@
 import type { Match, MatchStatus, Team } from "../domain/match";
-import { sportThumb } from "../domain/match";
+import { sportThumb } from "../domain/artwork";
 import { num, parseProto, sub, subs, text, texts, type ProtoField } from "../lib/protobuf";
 import { FEED_PATH, resetApiHosts, resolveApiHosts } from "./source-sites";
 
@@ -183,6 +183,7 @@ const parseMatch = (message: ProtoField[], oddsById: Map<string, string[]>): Mat
   // The feed's own side markers are unreliable (duplicated 1s, or absent).
   const homeTeam = teams[0] ?? titleFallback(titleText).home;
   const awayTeam = teams[1] ?? titleFallback(titleText).away;
+  const artHint = [titleText, homeTeam.name, awayTeam.name, nameOf(competition)].filter(Boolean).join(" ");
 
   // Session-style entries have no team rows. The title becomes the event
   // label and is never split into two fake opponents.
@@ -206,7 +207,7 @@ const parseMatch = (message: ProtoField[], oddsById: Map<string, string[]>): Mat
       venue: null,
       country,
       round: null,
-      thumb: sportThumb(sportId),
+      thumb: sportThumb(sportId, String(id), artHint),
       sportId,
       slugs,
       odds: oddsById.get(String(id)) ?? undefined,
@@ -236,7 +237,7 @@ const parseMatch = (message: ProtoField[], oddsById: Map<string, string[]>): Mat
     venue: null,
     country,
     round: null,
-    thumb: sportThumb(sportId),
+    thumb: sportThumb(sportId, String(id), artHint),
     sportId,
     slugs,
     odds: oddsById.get(String(id)) ?? undefined,

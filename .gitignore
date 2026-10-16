@@ -2,3 +2,8 @@ node_modules
 dist
 .scratch
 .DS_Store
+
+# Local secrets: source-network endpoints never leave this machine.
+.env
+.env.*
+!.env.example

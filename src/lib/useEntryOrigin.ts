@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { cachedEntryOrigin, DEFAULT_ENTRY_ORIGIN_FALLBACK, resolveEntryOrigin } from "../api/source-sites";
+import { cachedEntryOrigin, resolveEntryOrigin } from "../api/source-sites";
 
 /**
  * The live entry origin for the watch screen's embed and route card.
  *
- * Starts instantly from the cached origin (or the compiled-in fallback) so
- * there is never a blank state, then re-resolves in the background; `reload`
+ * Starts instantly from the cached origin, then re-resolves in the
+ * background; `reload`
  * with `fresh: true` bypasses every cache for the stall-recovery path, when
  * the current generation looks dead and the rotation has to be discovered
  * from scratch. The resolving flag is exposed for status hints, not gating -
@@ -16,7 +16,7 @@ export const useEntryOrigin = (): {
   resolving: boolean;
   reload: (fresh?: boolean) => Promise<string>;
 } => {
-  const [origin, setOrigin] = useState<string>(() => cachedEntryOrigin() ?? DEFAULT_ENTRY_ORIGIN_FALLBACK);
+  const [origin, setOrigin] = useState<string>(() => cachedEntryOrigin() ?? "");
   const [resolving, setResolving] = useState(false);
   const generation = useRef(0);
 

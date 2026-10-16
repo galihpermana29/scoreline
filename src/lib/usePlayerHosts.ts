@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_PLAYER_HOSTS, resolvePlayerHosts } from "../api/source-sites";
+import { cachedPlayerHosts, resolvePlayerHosts } from "../api/source-sites";
 
 /**
  * The live bare-player host list for the watch screen's direct player embed.
  *
- * Mirrors useEntryOrigin: starts instantly from the cached list (or the
- * compiled-in defaults) so there is never a blank state, then re-resolves in
- * the background; `reload` with `fresh: true` bypasses every cache for the
+ * Mirrors useEntryOrigin: starts instantly from the cached list so there is
+ * never a blank state, then re-resolves in the background; `reload` with `fresh: true` bypasses every cache for the
  * stall-recovery path, when the listed hosts look dead and the params API
  * has to be re-read from scratch. The resolving flag is exposed for status
  * hints, not gating - the embed mounts against the last known host either
@@ -17,7 +16,7 @@ export const usePlayerHosts = (): {
   resolving: boolean;
   reload: (fresh?: boolean) => Promise<readonly string[]>;
 } => {
-  const [hosts, setHosts] = useState<readonly string[]>(DEFAULT_PLAYER_HOSTS);
+  const [hosts, setHosts] = useState<readonly string[]>(() => cachedPlayerHosts() ?? []);
   const [resolving, setResolving] = useState(false);
   const generation = useRef(0);
 

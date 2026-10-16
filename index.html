@@ -3,10 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Scoreline</title>
+    <script>
+      // Mirror of src/lib/theme.ts: set the appearance before first paint.
+      try {
+        var theme = localStorage.getItem("scoreline:theme");
+        if (theme === "dark") {
+          document.documentElement.dataset.theme = "dark";
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", "#000000");
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

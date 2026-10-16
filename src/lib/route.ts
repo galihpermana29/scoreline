@@ -28,7 +28,7 @@ const ROUTE_LANG = "id";
 
 /**
  * The real site's entry origin is not hardcoded anywhere: the operator
- * rotates generations (***REMOVED***17.lol -> ***REMOVED***18.casa, observed
+ * rotates generations (one host generation rotating to the next, observed
  * 2026-10-16), so every consumer resolves the live origin through
  * src/api/source-sites.ts and passes it in here. Deep links are served from
  * any live generation, so resolving a route against the resolved origin

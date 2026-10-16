@@ -3,15 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import type { Match } from "../domain/match";
 import { matchLabel } from "../domain/match";
 import { formatLongDate, formatTime } from "../lib/format";
-import { StatusBadge } from "../components/tv";
+import { MORPH_SPRING, MatchCard, Shelf, StatusBadge, kickoffLabel, type OpenMatch } from "../components/tv";
+import { Icon } from "../components/icons";
 import { Crest, Notice } from "../components/ui";
 import { parseMatchRoute, sourceUrl } from "../lib/route";
 import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
+import { downloadCalendarEvent } from "../lib/calendar";
 
 /**
- * Simulated watch page. It mirrors the feed's own deep-link shape
+ * The watch screen. It mirrors the feed's own deep-link shape
  * (/{lang}/{sport}/{competitionSlug}-{id}/{matchSlug}.html). The simulated
  * player is the default view; pressing play mounts the real stream from the
  * source site as a sandboxed iframe. Sandboxing allows scripts and
@@ -19,7 +21,7 @@ import { usePlayerHosts } from "../lib/usePlayerHosts";
  * popups so the source site's ads cannot hijack this tab. Stopping unmounts
  * the frame, which also tears down the stream.
  *
- * Two embed modes, switchable on the live bar (2026-10-16):
+ * Two embed modes, switchable on the toolbar (2026-10-16):
  *
  * - "player" (default) embeds their dedicated bare player page directly,
  *   skipping the match page and its banner ads entirely - the player gets
@@ -58,23 +60,46 @@ import { usePlayerHosts } from "../lib/usePlayerHosts";
  * stall swaps the frame for an explicit retry notice instead of spinning
  * forever. Player-host rotation inside the "page" mode needs no handling
  * here: their own page embeds the live player host client-side.
+ *
+ * Layout: the frame is the screen. It takes the full content width (capped
+ * by the viewport height so it never scrolls off), and everything else -
+ * title, status, toolbar, details, related fixtures - sits below it. The
+ * shell shares `layoutId` with the card that opened it, so arriving here
+ * reads as that card growing into the player rather than a page swap.
  */
 
 /** How long the embed may stay silent after mounting before it counts as stalled. */
 const EMBED_LOAD_TIMEOUT_MS = 15_000;
 const kickHint = (match: Match): string =>
-  match.status.kind === "live"
-    ? "In progress"
-    : match.status.kind === "upcoming"
-      ? "Kick-off"
-      : "Final";
+  match.status.kind === "live" ? "In progress" : match.status.kind === "upcoming" ? "Kick-off" : "Final";
 
-export const StreamScreen = ({ match, href, onExit }: { match: Match; href: string; onExit: () => void }) => {
+export const StreamScreen = ({
+  match,
+  href,
+  layoutId,
+  autoplay,
+  related,
+  onExit,
+  onOpen,
+  onMore,
+}: {
+  match: Match;
+  href: string;
+  /** Shared element id of the card this screen opened from, if any. */
+  layoutId: string | null;
+  /** The user explicitly asked to watch: start the live embed without a second click. */
+  autoplay: boolean;
+  related: readonly Match[];
+  onExit: () => void;
+  onOpen: OpenMatch;
+  onMore: (match: Match) => void;
+}) => {
   const scored = match.homeScore !== null && match.awayScore !== null && match.status.kind !== "upcoming";
   const live = match.status.kind === "live";
   // The live embed only exists while playing; stopped means fully unmounted,
-  // so the stream and its bandwidth stop too.
-  const [playing, setPlaying] = useState(false);
+  // so the stream and its bandwidth stop too. A click that asked to watch a
+  // live match starts it straight away - that click is the user activation.
+  const [playing, setPlaying] = useState(autoplay && live);
   const [embedReady, setEmbedReady] = useState(false);
 
   // Rotation resilience: the embedded origins come from runtime resolution,
@@ -260,316 +285,323 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
     shellRef.current?.requestFullscreen().catch(() => setFullscreenDenied(true));
   };
 
-  return (
-    <div className="stream">
-      <header className="stream-top">
-        <button className="stream-back" onClick={onExit}>
-          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden>
-            <path d="M7 1L3 5.5 7 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Scoreline
-        </button>
-        <span
-          className="stream-flag"
+  const flag = playing
+    ? embedFailures >= 2
+      ? { label: "Source unreachable", tone: "warn" as const, title: "The live source is not answering; retrying is available below the player" }
+      : embedMode === "player"
+        ? { label: "Live player", tone: "live" as const, title: "The source site's bare player page is embedded directly, on the first listed player host that provably serves it" }
+        : { label: "Live page embed", tone: "live" as const, title: "The source site's full match page is embedded, on its currently resolved domain" }
+    : { label: "Simulated", tone: "idle" as const, title: "This frame plays no video until you press play - it is a local simulation" };
+
+  const embedControls = (
+    <>
+      <div className="player-embed-mode" role="group" aria-label="Embed mode">
+        <button
+          className={embedMode === "player" ? "player-embed-mode-on" : undefined}
+          onClick={() => setEmbedMode("player")}
+          disabled={!canPlayer}
           title={
-            playing
-              ? embedFailures >= 2
-                ? "The live source is not answering; retrying is available below the player"
-                : embedMode === "player"
-                  ? "The source site's bare player page is embedded directly, on the first listed player host that provably serves it"
-                  : "The source site's full match page is embedded, on its currently resolved domain"
-              : "This page plays no video - it is a local simulation"
+            canPlayer
+              ? "Embed the source site's bare player page - no ads, full frame"
+              : "Needs the feed's numeric match and sport ids for this match"
           }
         >
-          {playing
-            ? embedFailures >= 2
-              ? "Source unreachable"
-              : embedMode === "player"
-                ? "Live player"
-                : "Live page embed"
-            : "Simulated stream"}
+          Player
+        </button>
+        <button
+          className={embedMode === "page" ? "player-embed-mode-on" : undefined}
+          onClick={() => setEmbedMode("page")}
+          title="Embed the source site's full match page - the fallback if the bare player ever stops working"
+        >
+          Page
+        </button>
+      </div>
+      <button
+        className="toolbar-button"
+        onClick={toggleFullscreen}
+        title={isFullscreen ? "Leave fullscreen" : "Fullscreen the live embed (uses this page, not the player's own button)"}
+      >
+        <Icon name={isFullscreen ? "fullscreen-exit" : "fullscreen"} size={16} />
+        {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+      </button>
+      <button className="toolbar-button" onClick={stopEmbed} title="Stop the live embed and return to the simulated player">
+        <Icon name="stop" size={14} />
+        Stop
+      </button>
+    </>
+  );
+
+  return (
+    <div className="watch">
+      <motion.header
+        className="watch-top"
+        initial={layoutId ? { opacity: 0 } : false}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3, delay: layoutId ? 0.1 : 0 }}
+      >
+        <button className="back-pill back-pill-static" onClick={onExit} aria-label="Back">
+          <Icon name="chevron-left" size={16} />
+          <span className="back-pill-label">Back</span>
+        </button>
+        <span className="watch-top-title">{matchLabel(match)}</span>
+        <span className={`stream-flag stream-flag-${flag.tone}`} title={flag.title}>
+          {flag.label}
         </span>
-      </header>
+      </motion.header>
 
-      <h1 className="stream-title">{matchLabel(match)}</h1>
-      <p className="stream-subtitle">
-        {match.sport} · {match.league.name}
-      </p>
-
-      <div className="player-shell" ref={shellRef}>
-        {playing && embedFailures < 2 ? (
-          <>
-            {embedMounted ? (
-              <iframe
-                key={`${embedMode}-${embedEpoch}`}
-                className="player-embed"
-                src={embedSrc}
-                title={
-                  embedMode === "player"
-                    ? "Live bare player embedded from the source site's player host, verified before mounting"
-                    : "Live match page embedded from the source site"
-                }
-                sandbox="allow-scripts allow-same-origin"
-                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                // Never no-referrer: the player page's gate 401s requests with
-                // no Referer, and the browser's default policy already sends
-                // this app's origin, which the gate was verified to accept.
-                referrerPolicy="no-referrer-when-downgrade"
-                onLoad={() => setEmbedReady(true)}
-              />
-            ) : null}
-            {!embedReady ? (
-              <div className="player-embed-loading" role="status">
-                <span className="player-note-dot" />
-                {embedMode === "player" && !embedMounted
-                  ? "Verifying the live source…"
-                  : embedFailures === 0
-                    ? "Connecting to live source…"
-                    : "Reconnecting to a fresh live source…"}
-              </div>
-            ) : null}
-            <div className="player-embed-bar">
-              <div className="player-embed-mode" role="group" aria-label="Embed mode">
-                <button
-                  className={embedMode === "player" ? "player-embed-mode-on" : undefined}
-                  onClick={() => setEmbedMode("player")}
-                  disabled={!canPlayer}
+      <div className="watch-stage">
+        <motion.div
+          className="player-shell"
+          ref={shellRef}
+          layoutId={layoutId ?? undefined}
+          transition={MORPH_SPRING}
+          style={{ borderRadius: 16 }}
+        >
+          {playing && embedFailures < 2 ? (
+            <>
+              {embedMounted ? (
+                <iframe
+                  key={`${embedMode}-${embedEpoch}`}
+                  className="player-embed"
+                  src={embedSrc}
                   title={
-                    canPlayer
-                      ? "Embed the source site's bare player page - no ads, full frame"
-                      : "Needs the feed's numeric match and sport ids for this match"
+                    embedMode === "player"
+                      ? "Live bare player embedded from the source site's player host, verified before mounting"
+                      : "Live match page embedded from the source site"
                   }
-                >
-                  Player
-                </button>
-                <button
-                  className={embedMode === "page" ? "player-embed-mode-on" : undefined}
-                  onClick={() => setEmbedMode("page")}
-                  title="Embed the source site's full match page - the fallback if the bare player ever stops working"
-                >
-                  Page
-                </button>
-              </div>
-              <button
-                className="player-embed-fullscreen"
-                onClick={toggleFullscreen}
-                title={
-                  isFullscreen
-                    ? "Leave fullscreen"
-                    : "Fullscreen the live embed (uses this page, not the player's own button)"
-                }
-              >
-                <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden>
-                  {isFullscreen ? (
-                    <path
-                      d="M4 1v3H1M8 1v3h3M4 11V8H1M8 11V8h3"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ) : (
-                    <path
-                      d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  )}
-                </svg>
-                {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-              </button>
-              <button
-                className="player-embed-stop"
-                onClick={stopEmbed}
-                title="Stop the live embed and return to the simulated player"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
-                  <rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor" />
-                </svg>
-                Stop embed
-              </button>
-            </div>
-            {fullscreenDenied ? (
-              <div className="player-embed-denied" role="status">
-                Fullscreen was blocked by the browser
-              </div>
-            ) : null}
-            {playerNotice !== null ? (
-              <div className="player-embed-denied" role="status">
-                {playerNotice}
-              </div>
-            ) : null}
-          </>
-        ) : playing ? (
-          <div className="player-embed-failed">
-            <Notice
-              icon="📡"
-              title="Live source unreachable"
-              body="The source site did not answer even after a fresh domain lookup - the operator may be mid-rotation. The feed keeps updating in the background; retry in a moment."
-              action={{ label: "Retry live source", onClick: retryEmbed }}
-            />
-          </div>
-        ) : (
-          <>
-            <div className="player-art" aria-hidden />
-            <div className="player-scanlines" aria-hidden />
-            <div className="player-grid" aria-hidden />
-
-            <button
-              className="player-play"
-              onClick={startEmbed}
-              aria-label="Play the live match embed"
-              title="Play the live match from the source site"
-            >
-              <svg width="18" height="18" viewBox="0 0 14 14" aria-hidden>
-                <path d="M3.5 2.2 11.8 7 3.5 11.8z" fill="currentColor" />
-              </svg>
-            </button>
-
-            <div className="player-status">
-              {live ? (
-                <span className="badge-live">
-                  <span className="live-dot" />
-                  LIVE
-                </span>
-              ) : (
-                <StatusBadge match={match} />
-              )}
-            </div>
-
-            <div className="player-score">
-              {match.titleOnly ? (
-                <div className="player-event" lang="en">
-                  {match.home.name}
+                  sandbox="allow-scripts allow-same-origin"
+                  allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                  // Never no-referrer: the player page's gate 401s requests with
+                  // no Referer, and the browser's default policy already sends
+                  // this app's origin, which the gate was verified to accept.
+                  referrerPolicy="no-referrer-when-downgrade"
+                  onLoad={() => setEmbedReady(true)}
+                />
+              ) : null}
+              {!embedReady ? (
+                <div className="player-embed-loading" role="status">
+                  <span className="player-note-dot" />
+                  {embedMode === "player" && !embedMounted
+                    ? "Verifying the live source…"
+                    : embedFailures === 0
+                      ? "Connecting to live source…"
+                      : "Reconnecting to a fresh live source…"}
                 </div>
-              ) : (
-                <>
-                  <div className="player-side">
-                    <Crest src={match.home.badge} name={match.home.name} size={64} />
-                    <span className="player-side-name" lang="en">{match.home.name}</span>
-                  </div>
-                  <div className="player-count">
-                    {scored ? (
-                      <div className="player-count-score">
-                        {match.homeScore}
-                        <span className="player-count-divider">–</span>
-                        {match.awayScore}
-                      </div>
-                    ) : (
-                      <div className="player-count-time">{match.kickoff ? formatTime(match.kickoff) : "TBD"}</div>
-                    )}
-                    <span className="player-count-hint">{kickHint(match)}</span>
-                  </div>
-                  <div className="player-side">
-                    <Crest src={match.away.badge} name={match.away.name} size={64} />
-                    <span className="player-side-name" lang="en">{match.away.name}</span>
-                  </div>
-                </>
-              )}
+              ) : null}
+              {/* In fullscreen the toolbar below is off screen, so the
+                  controls ride inside the frame for the duration. */}
+              {isFullscreen ? <div className="player-embed-bar">{embedControls}</div> : null}
+              {fullscreenDenied ? (
+                <div className="player-embed-denied" role="status">
+                  Fullscreen was blocked by the browser
+                </div>
+              ) : null}
+              {playerNotice !== null ? (
+                <div className="player-embed-denied" role="status">
+                  {playerNotice}
+                </div>
+              ) : null}
+            </>
+          ) : playing ? (
+            <div className="player-embed-failed">
+              <Notice
+                icon="📡"
+                title="Live source unreachable"
+                body="The source site did not answer even after a fresh domain lookup - the operator may be mid-rotation. The feed keeps updating in the background; retry in a moment."
+                action={{ label: "Retry live source", onClick: retryEmbed }}
+              />
             </div>
+          ) : (
+            <>
+              <div className="player-art" aria-hidden />
+              <div className="player-scanlines" aria-hidden />
+              <div className="player-grid" aria-hidden />
 
-            <div className="player-controls" aria-hidden>
-              <span className="player-control-icon">
-                <svg width="14" height="14" viewBox="0 0 14 14">
-                  <path d="M3 2h3v10H3zM8 2h3v10H8z" fill="currentColor" />
-                </svg>
-              </span>
-              <span className="player-timeline">
-                <span className="player-timeline-live" />
-              </span>
-              <span className="player-control-icon player-control-mute">
-                <svg width="15" height="15" viewBox="0 0 15 15">
-                  <path d="M2 5h3l4-3v11L5 10H2z" fill="currentColor" />
-                  <path d="M11 5c1.2 1.4 1.2 3.6 0 5" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-                </svg>
-              </span>
-              <span className="player-quality">{live ? "1080p" : "—"}</span>
-              <span className="player-control-icon">
-                <svg width="14" height="14" viewBox="0 0 14 14">
-                  <path d="M1 4l6 4 6-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <rect x="1" y="5" width="12" height="7" rx="1.5" fill="currentColor" />
-                </svg>
-              </span>
-            </div>
+              <button
+                className="player-play"
+                onClick={startEmbed}
+                aria-label="Play the live match embed"
+                title="Play the live match from the source site"
+              >
+                <Icon name="play" size={26} />
+              </button>
 
-            <div className="player-note">
-              <span className="player-note-dot" />
-              Simulated feed - no video is streamed here
-            </div>
-          </>
-        )}
+              <div className="player-status">
+                <StatusBadge match={match} />
+              </div>
+
+              <div className="player-score">
+                {match.titleOnly ? (
+                  <div className="player-event" lang="en">
+                    {match.home.name}
+                  </div>
+                ) : (
+                  <>
+                    <div className="player-side">
+                      <Crest src={match.home.badge} name={match.home.name} size={64} />
+                      <span className="player-side-name" lang="en">
+                        {match.home.name}
+                      </span>
+                    </div>
+                    <div className="player-count">
+                      {scored ? (
+                        <div className="player-count-score">
+                          {match.homeScore}
+                          <span className="player-count-divider">–</span>
+                          {match.awayScore}
+                        </div>
+                      ) : (
+                        <div className="player-count-time">{match.kickoff ? formatTime(match.kickoff) : "TBD"}</div>
+                      )}
+                      <span className="player-count-hint">{kickHint(match)}</span>
+                    </div>
+                    <div className="player-side">
+                      <Crest src={match.away.badge} name={match.away.name} size={64} />
+                      <span className="player-side-name" lang="en">
+                        {match.away.name}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="player-note">
+                <span className="player-note-dot" />
+                Simulated feed - press play for the live stream
+              </div>
+            </>
+          )}
+        </motion.div>
       </div>
 
-      <dl className="stream-meta">
-        {match.kickoff ? (
-          <div className="stream-meta-cell">
-            <dt>{live ? "Started" : "Kick-off"}</dt>
-            <dd>{`${formatLongDate(match.kickoff)}, ${formatTime(match.kickoff)}`}</dd>
+      <motion.div
+        className="watch-body"
+        initial={layoutId ? { opacity: 0, y: 12 } : false}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1], delay: layoutId ? 0.12 : 0 }}
+      >
+        <div className="watch-headline">
+          <div className="watch-headline-text">
+            <div className="hero-eyebrow">
+              <Crest src={match.league.badge} name={match.league.name} size={18} />
+              {match.league.name} · {match.sport}
+            </div>
+            <h1 className="watch-title">{matchLabel(match)}</h1>
+            <div className="hero-meta">
+              <StatusBadge match={match} />
+              {scored ? (
+                <span className="hero-score">
+                  {match.homeScore} – {match.awayScore}
+                </span>
+              ) : (
+                <span>{kickoffLabel(match, true)}</span>
+              )}
+              {match.country ? <span className="hero-meta-dim">{match.country}</span> : null}
+            </div>
           </div>
-        ) : null}
-        {match.country ? (
-          <div className="stream-meta-cell">
-            <dt>Country</dt>
-            <dd>{match.country}</dd>
+          <div className="watch-toolbar" role="toolbar" aria-label="Player controls">
+            {playing ? (
+              embedControls
+            ) : (
+              <>
+                <button className="button-primary" onClick={startEmbed}>
+                  <Icon name="play" size={14} />
+                  {live ? "Play Live" : "Open Stream"}
+                </button>
+                {match.status.kind === "upcoming" && match.kickoff ? (
+                  <button className="button-tinted" onClick={() => downloadCalendarEvent(match)}>
+                    <Icon name="calendar" size={16} />
+                    Add to Calendar
+                  </button>
+                ) : null}
+                <button className="button-tinted" onClick={() => onMore(match)}>
+                  Details
+                </button>
+              </>
+            )}
           </div>
-        ) : null}
-        {match.odds ? (
-          <div className="stream-meta-cell">
-            <dt>Odds</dt>
-            <dd>{match.odds.join(" · ")}</dd>
-          </div>
-        ) : null}
-        <div className="stream-meta-cell">
-          <dt>Route</dt>
-          <dd>
-            <a
-              className="stream-route"
-              href={sourceUrl(href, origin)}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Open the real match page on the source site (new tab)"
-            >
-              {href}
-            </a>
-          </dd>
         </div>
-      </dl>
+
+        <dl className="stream-meta">
+          {match.kickoff ? (
+            <div className="stream-meta-cell">
+              <dt>{live ? "Started" : "Kick-off"}</dt>
+              <dd>{`${formatLongDate(match.kickoff)}, ${formatTime(match.kickoff)}`}</dd>
+            </div>
+          ) : null}
+          {match.country ? (
+            <div className="stream-meta-cell">
+              <dt>Country</dt>
+              <dd>{match.country}</dd>
+            </div>
+          ) : null}
+          {match.odds ? (
+            <div className="stream-meta-cell">
+              <dt>Odds</dt>
+              <dd>{match.odds.join(" · ")}</dd>
+            </div>
+          ) : null}
+          <div className="stream-meta-cell stream-meta-cell-wide">
+            <dt>Source</dt>
+            <dd>
+              <a
+                className="stream-route"
+                href={sourceUrl(href, origin)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open the real match page on the source site (new tab)"
+              >
+                {href}
+              </a>
+            </dd>
+          </div>
+        </dl>
+
+        {related.length > 0 ? (
+          <Shelf title="Also Live" count={related.length}>
+            {related.map((other) => (
+              <MatchCard key={other.id} match={other} layoutId={`art-related-${other.id}`} onOpen={onOpen} onMore={onMore} />
+            ))}
+          </Shelf>
+        ) : null}
+      </motion.div>
     </div>
   );
 };
 
 /** Player-shaped skeleton shown while the deep-linked match is still loading from the feed. */
-export const StreamSkeleton = () => (
-  <div className="stream">
-    <header className="stream-top">
-      <span className="stream-back stream-back-skeleton" aria-hidden />
+export const StreamSkeleton = ({ onExit }: { onExit: () => void }) => (
+  <div className="watch">
+    <header className="watch-top">
+      <button className="back-pill back-pill-static" onClick={onExit} aria-label="Back">
+        <Icon name="chevron-left" size={16} />
+        <span className="back-pill-label">Back</span>
+      </button>
     </header>
-    <div className="stream-skeleton-title" aria-hidden />
-    <div className="player-shell player-shell-skeleton" aria-label="Loading match">
-      <div className="player-art" aria-hidden />
-      <motion.div
-        className="stream-skeleton-bar"
-        initial={{ opacity: 0.4 }}
-        animate={{ opacity: 1 }}
-        transition={{ repeat: Infinity, repeatType: "reverse", duration: 1 }}
-      />
+    <div className="watch-stage">
+      <div className="player-shell player-shell-skeleton" aria-label="Loading match" style={{ borderRadius: 16 }}>
+        <div className="player-art" aria-hidden />
+        <motion.div
+          className="stream-skeleton-bar"
+          initial={{ opacity: 0.4 }}
+          animate={{ opacity: 1 }}
+          transition={{ repeat: Infinity, repeatType: "reverse", duration: 1 }}
+        />
+      </div>
+    </div>
+    <div className="watch-body">
+      <div className="stream-skeleton-title" aria-hidden />
     </div>
   </div>
 );
 
 /** Shown when the deep link doesn't match anything in the current live window. */
 export const StreamUnavailable = ({ onExit }: { onExit: () => void }) => (
-  <div className="stream">
-    <header className="stream-top">
-      <button className="stream-back" onClick={onExit}>
-        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden>
-          <path d="M7 1L3 5.5 7 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Scoreline
+  <div className="watch">
+    <header className="watch-top">
+      <button className="back-pill back-pill-static" onClick={onExit} aria-label="Back">
+        <Icon name="chevron-left" size={16} />
+        <span className="back-pill-label">Back</span>
       </button>
     </header>
     <div className="stream-unavailable">

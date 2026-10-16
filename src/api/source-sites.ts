@@ -4,20 +4,17 @@ import { resolveRedirect } from "./redirect";
  * Runtime discovery of the source network's rotating hosts (2026-10-16).
  *
  * The operator rotates domains as they get blocked: the main entry domain
- * moves roughly one generation per burn (***REMOVED***17.lol -> ***REMOVED***18.casa
- * was a path-preserving Cloudflare 301), and the protobuf feed host can move
- * with it. Every hardcoded origin is therefore a time bomb, so nothing in
+ * moves roughly one generation per burn (a path-preserving Cloudflare 301
+ * to the next domain), and the protobuf feed host can move with it. Every hardcoded origin is therefore a time bomb, so nothing in
  * this app hardcodes one for actual use - everything resolves through here.
  *
  * Two rotation facts drive the design (both verified live 2026-10-16):
  *
- * - The family serves the same site from several hosts at once:
- *   www.***REMOVED***.io and www.rbtv77.ru answer 200 directly with the same
- *   routing and the same content, and the Superabbit77 twins serve from
- *   their own site04.* subdomains. A plain browser fetch can verify any of
- *   them - their pages send Access-Control-Allow-Origin: * - and for a
- *   same-site CORS response, response.url reports the final URL even after
- *   redirects.
+ * - The family serves the same site from several hosts at once: several
+ *   domains answer 200 directly with the same routing and the same content.
+ *   A plain browser fetch can verify any of them - their pages send
+ *   Access-Control-Allow-Origin: * - and for a same-site CORS response,
+ *   response.url reports the final URL even after redirects.
  * - Old-generation hosts answer with 301s that do NOT carry ACAO, so the
  *   browser blocks the whole cross-origin chain on them. Only the
  *   server-side resolver (see the plugin in vite.config.ts) can walk those.
@@ -36,40 +33,38 @@ import { resolveRedirect } from "./redirect";
  */
 export const FEED_PATH = "/sfver%3Ctoken%3E/api/match/live";
 
-/** Hosts verified serving the protobuf feed right now (2026-10-16). */
-export const DEFAULT_API_HOSTS = ["apis-data10.***REMOVED***.ru", "apis-data-defra10.***REMOVED***.ru"] as const;
-
 /**
- * Entry hosts that answer 200 directly (no redirect), verified 2026-10-16.
- * All serve the same site, the same deep-link routing, and CORS-open pages,
- * so a browser fetch both verifies the host and yields its final URL.
+ * The last-resort fallback host lists, served by the dev middleware
+ * (`/api/config`) out of the gitignored `.env`. The client bundle contains
+ * no hostname at all: discovery from the entry page and the params API is
+ * the real path, these lists only seed the very first resolution, and a
+ * deployment without the middleware simply runs on discovery + caches.
  */
-const DIRECT_ENTRY_HOSTS = [
-  "https://www.***REMOVED***18.casa",
-  "https://www.***REMOVED***.io",
-  "https://www.rbtv77.ru",
-  "https://site04.***REMOVED***77hd.skin",
-  "https://site04.***REMOVED***77.my",
-] as const;
+type ServerDefaults = {
+  entryHosts: readonly string[];
+  redirectingEntryHosts: readonly string[];
+  apiHosts: readonly string[];
+  playerHosts: readonly string[];
+};
 
-/**
- * Compiled-in fallback origin: the current generation at the time of the
- * last verification (2026-10-16). Only used before the first successful
- * resolution; after that the cache and discovery take over.
- */
-export const DEFAULT_ENTRY_ORIGIN_FALLBACK: string = DIRECT_ENTRY_HOSTS[0];
+const EMPTY_DEFAULTS: ServerDefaults = { entryHosts: [], redirectingEntryHosts: [], apiHosts: [], playerHosts: [] };
 
-/**
- * Old-generation entry hosts that answer 301 to the current generation. The
- * 301 responses carry no ACAO, so browsers refuse the cross-origin chain and
- * these can only be walked server-side (see the redirect resolver).
- */
-const REDIRECTING_ENTRY_HOSTS = [
-  "https://www.***REMOVED***17.lol",
-  "https://www.***REMOVED***.com",
-  "https://***REMOVED***77hd.skin",
-  "https://***REMOVED***77.my",
-] as const;
+let serverDefaults: Promise<ServerDefaults> | null = null;
+
+const loadServerDefaults = (): Promise<ServerDefaults> => {
+  serverDefaults ??= fetch("/api/config", { cache: "no-store" })
+    .then((response) => {
+      if (!response.ok) throw new Error(`Config endpoint answered ${response.status}.`);
+      return response.json() as Promise<Partial<ServerDefaults>>;
+    })
+    .then((config): ServerDefaults => ({ ...EMPTY_DEFAULTS, ...config }))
+    .catch(() => {
+      // No middleware deployed (static build): discovery-only from here on.
+      serverDefaults = null;
+      return EMPTY_DEFAULTS;
+    });
+  return serverDefaults;
+};
 
 /** Path probed on entry hosts; any language root proves the site is served. */
 const ENTRY_PROBE_PATH = "/id";
@@ -113,6 +108,10 @@ const clearCache = (key: string): void => {
 /** The cached entry origin if still fresh, null otherwise. */
 export const cachedEntryOrigin = (): string | null => readCache<string>(ENTRY_CACHE_KEY, (age) => age < CACHE_TTL_MS);
 
+/** The cached player-host list if still fresh, null otherwise. */
+export const cachedPlayerHosts = (): readonly string[] | null =>
+  readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, (age) => age < CACHE_TTL_MS);
+
 const staleEntryOrigin = (): string | null => readCache<string>(ENTRY_CACHE_KEY, () => true);
 
 /**
@@ -139,7 +138,7 @@ let entryResolution: Promise<string> | null = null;
 /**
  * The origin of the source site's entry pages, whichever generation is
  * currently alive. Never throws: every path degrades to the last known
- * origin and finally to the compiled-in default, so callers always have a
+ * origin and finally to the env-seeded default, so callers always have a
  * usable string even while the network is down.
  */
 export const resolveEntryOrigin = async (fresh = false): Promise<string> => {
@@ -149,10 +148,11 @@ export const resolveEntryOrigin = async (fresh = false): Promise<string> => {
     if (entryResolution !== null) return entryResolution;
   }
   entryResolution = (async () => {
+    const defaults = await loadServerDefaults();
     // Stale cache first - it is the most likely host to still be alive -
     // then the direct-serving family hosts in generation order.
-    const browserCandidates = [staleEntryOrigin(), ...DIRECT_ENTRY_HOSTS].flatMap((host) =>
-      host === null ? [] : [host],
+    const browserCandidates = [staleEntryOrigin(), ...defaults.entryHosts].flatMap((host) =>
+      host === null || host === undefined || host === "" ? [] : [host],
     );
     for (const candidate of new Set(browserCandidates)) {
       const origin = await probeEntryHost(candidate);
@@ -166,8 +166,8 @@ export const resolveEntryOrigin = async (fresh = false): Promise<string> => {
     // hosts 301 to the current generation without ACAO, invisible to this
     // fetch, so walk them server-side where that redirect chain is visible.
     // The resolver is a dev middleware; when it is absent this simply skips.
-    const serverCandidates = [staleEntryOrigin(), ...REDIRECTING_ENTRY_HOSTS].flatMap((host) =>
-      host === null ? [] : [host],
+    const serverCandidates = [staleEntryOrigin(), ...defaults.redirectingEntryHosts].flatMap((host) =>
+      host === null || host === undefined || host === "" ? [] : [host],
     );
     for (const candidate of new Set(serverCandidates)) {
       try {
@@ -183,8 +183,9 @@ export const resolveEntryOrigin = async (fresh = false): Promise<string> => {
       }
     }
 
-    // Nothing answered. Keep whatever last worked, else the compiled default.
-    return staleEntryOrigin() ?? DIRECT_ENTRY_HOSTS[0];
+    // Nothing answered. Keep whatever last worked, else the env default
+    // (empty when no config endpoint exists - the screen shows unavailable).
+    return staleEntryOrigin() ?? defaults.entryHosts[0] ?? "";
   })();
   try {
     return await entryResolution;
@@ -198,7 +199,7 @@ export const resolveEntryOrigin = async (fresh = false): Promise<string> => {
  * list (an inline config block, observed 2026-10-16 as escaped URLs next to
  * LAN probe hosts). The entry page is CORS-open so the browser reads it
  * directly; slashes arrive escaped as \u002F and are normalised first.
- * Falls back to the last known host list and finally the verified defaults.
+ * Falls back to the last known host list and finally the env-seeded defaults.
  */
 export const resolveApiHosts = async (fresh = false): Promise<readonly string[]> => {
   if (!fresh) {
@@ -224,7 +225,8 @@ export const resolveApiHosts = async (fresh = false): Promise<readonly string[]>
     // else the verified default pair. Per-request failover (in aelive.ts)
     // rotates across whatever list this returns.
     const stale = readCache<string[]>(API_HOSTS_CACHE_KEY, () => true);
-    return stale !== null && stale.length > 0 ? stale : DEFAULT_API_HOSTS;
+    if (stale !== null && stale.length > 0) return stale;
+    return (await loadServerDefaults()).apiHosts;
   }
 };
 
@@ -243,20 +245,13 @@ export const resetApiHosts = (): void => clearCache(API_HOSTS_CACHE_KEY);
  */
 const PARAMS_PATH = "/api/common/params";
 
-/** Player hosts listed by the params API right now (verified 2026-10-16). */
-export const DEFAULT_PLAYER_HOSTS = [
-  "mimi01eo.***REMOVED***.cfd",
-  "tim01bp.***REMOVED***8utphnumber.cfd",
-  "morgan01cf.***REMOVED***587uclock.cfd",
-] as const;
-
 const PLAYER_HOSTS_CACHE_KEY = "scoreline:player-hosts";
 
 /**
  * Unscrambles the params API's rotation: every code point in 33..126 moves
  * forward by a shift within that 94-code-point window, everything else
  * (newline, CJK, emoji) passes through (verified 2026-10-16: the ciphertext
- * `]C3EGA=FD` decodes to `.***REMOVED***` at shift 47, whose direction is
+ * a sample ciphertext decodes to the family's TLD at shift 47, whose direction is
  * irrelevant because a 47-step rotation inside a 94-wide window is its own
  * inverse). The shift itself is operator-chosen, so it is treated as
  * rotating too: nothing here trusts 47 staying current.
@@ -348,8 +343,9 @@ const decodePlayerHosts = (text: string): string[] | null => {
 /**
  * The live bare-player hosts, from the same data hosts the feed fails over
  * across. Never throws: every path degrades to the last known list and
- * finally to the verified defaults, so the player screen always has a host
- * to try while the network is still resolving.
+ * finally to the env-seeded defaults, so the player screen always has a host
+ * to try while the network is still resolving (an empty list when the config
+ * middleware is absent; the caller then relies on their match page).
  */
 export const resolvePlayerHosts = async (fresh = false): Promise<readonly string[]> => {
   if (!fresh) {
@@ -369,7 +365,8 @@ export const resolvePlayerHosts = async (fresh = false): Promise<readonly string
     }
   }
   const stale = readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, () => true);
-  return stale !== null && stale.length > 0 ? stale : DEFAULT_PLAYER_HOSTS;
+  if (stale !== null && stale.length > 0) return stale;
+  return (await loadServerDefaults()).playerHosts;
 };
 
 /** Drops the player-host cache so the next resolution re-reads params. */

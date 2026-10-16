@@ -1,0 +1,1063 @@
+/* ---------- shelves ---------- */
+.shelf,
+.grid-section,
+.wide-grid-section,
+.home-standings {
+  margin-top: 30px;
+}
+
+@media (min-width: 740px) {
+  .shelf,
+  .grid-section,
+  .wide-grid-section,
+  .home-standings {
+    margin-top: 36px;
+  }
+}
+
+.shelf-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 0 var(--gutter);
+  font: 700 21px/1.2 var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+@media (min-width: 740px) {
+  .shelf-title {
+    font-size: 24px;
+  }
+}
+
+.shelf-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.shelf-link svg {
+  color: var(--label-3);
+  transition:
+    transform 200ms var(--ease-out),
+    color 200ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shelf-link:hover svg {
+    color: var(--label);
+    transform: translateX(3px);
+  }
+}
+
+.shelf-count {
+  color: var(--label-3);
+  font-size: 0.7em;
+  font-weight: 600;
+}
+
+.shelf-viewport {
+  position: relative;
+}
+
+.shelf-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--card-w);
+  gap: var(--shelf-gap);
+  padding: 14px var(--gutter) 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: none;
+}
+
+.shelf-tiles .shelf-track {
+  grid-auto-columns: var(--tile-w);
+}
+
+.shelf-track::-webkit-scrollbar {
+  display: none;
+}
+
+.shelf-arrow {
+  position: absolute;
+  top: 14px;
+  height: calc(var(--card-w) * 9 / 16);
+  display: none;
+  place-items: center;
+  width: calc(var(--gutter) + 8px);
+  color: var(--label);
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+}
+
+.shelf-tiles .shelf-arrow {
+  height: var(--tile-w);
+}
+
+.shelf-arrow-start {
+  left: 0;
+  background: linear-gradient(to right, color-mix(in srgb, var(--bg) 85%, transparent), transparent);
+}
+
+.shelf-arrow-end {
+  right: 0;
+  background: linear-gradient(to left, color-mix(in srgb, var(--bg) 85%, transparent), transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shelf-arrow {
+    display: grid;
+  }
+
+  .shelf-viewport:hover .shelf-arrow,
+  .shelf-arrow:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* ---------- grids ---------- */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 20px var(--shelf-gap);
+  padding: 14px var(--gutter) 0;
+}
+
+@media (min-width: 1100px) {
+  .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile-w), 1fr));
+  gap: 20px var(--shelf-gap);
+  padding: 14px var(--gutter) 0;
+}
+
+/* Phone: always three across, like the shelf's tile size, instead of two
+   stretched squares. */
+@media (max-width: 739px) {
+  .tile-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ---------- cards ---------- */
+.card-cell {
+  min-width: 0;
+  scroll-snap-align: start;
+  perspective: 900px;
+}
+
+.card {
+  display: block;
+  width: 100%;
+  --rx: 0deg;
+  --ry: 0deg;
+  --lift: 1;
+}
+
+.card-surface {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: 0 1px 2px var(--shadow-soft);
+  transform: rotateX(var(--rx)) rotateY(var(--ry)) scale(var(--lift));
+  transition:
+    transform 240ms var(--ease-out),
+    box-shadow 240ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    --lift: 1.04;
+  }
+
+  .card:hover .card-surface {
+    box-shadow:
+      0 18px 40px var(--shadow),
+      0 0 0 0.5px var(--stroke-strong);
+    transition:
+      transform 160ms var(--ease-out),
+      box-shadow 240ms var(--ease-out);
+  }
+
+  .card:hover .card-shine,
+  .card:hover .card-play {
+    opacity: 1;
+  }
+
+  .card:hover .card-play {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.card:active {
+  --lift: 0.98;
+}
+
+.card:focus-visible {
+  outline: none;
+  --lift: 1.04;
+}
+
+.card:focus-visible .card-surface {
+  box-shadow:
+    0 0 0 3px var(--focus-ring),
+    0 18px 40px var(--shadow);
+}
+
+.card:focus-visible .card-play {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.card-shine {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--gx, 50%) var(--gy, 0%), rgba(255, 255, 255, 0.16), transparent 55%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms var(--ease-out);
+}
+
+.card-top {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+
+.card-score {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  font: 700 14px/1 var(--font-rounded);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-score-dash {
+  margin: 0 4px;
+  color: var(--label-2);
+}
+
+/* Hover-only play affordance; touch devices just tap the card. */
+.card-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.2);
+  color: #fff;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
+  pointer-events: none;
+}
+
+.card-play svg {
+  margin-left: 2px;
+}
+
+.card-caption {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 2px 0;
+}
+
+.card-caption-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-title {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-title-vs {
+  color: var(--label-3);
+  font-weight: 500;
+}
+
+.card-meta {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--label-2);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-more {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
+  border-radius: 50%;
+  color: var(--label-2);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 200ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card-more {
+    opacity: 0;
+  }
+
+  .card-cell:hover .card-more,
+  .card-more:focus-visible {
+    opacity: 1;
+  }
+
+  .card-more:hover {
+    background: var(--fill-strong);
+    color: var(--label);
+  }
+}
+
+.card-more:focus-visible {
+  border-radius: 50%;
+}
+
+/* Touch: a 44px hit area around the 28px glyph without moving it. */
+@media (pointer: coarse) {
+  .card-more {
+    position: relative;
+  }
+
+  .card-more::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+}
+
+/* ---------- wide feature cards ---------- */
+.wide-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 14px var(--gutter) 0;
+}
+
+/* Phone: a snap shelf of near-full-width cards instead of five stacked
+   posters, so the home page stays a scroll of shelves. */
+@media (max-width: 739px) {
+  .wide-grid {
+    grid-auto-flow: column;
+    grid-auto-columns: min(84vw, 360px);
+    grid-template-columns: none;
+    gap: var(--shelf-gap);
+    padding-bottom: 10px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--gutter);
+    scrollbar-width: none;
+  }
+
+  .wide-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wide-card {
+    scroll-snap-align: start;
+  }
+}
+
+/* Two columns only once each card can be at least 460px wide; narrower than
+   that the 2.2:1 frame cannot hold the two team rows. */
+@media (min-width: 740px) {
+  .wide-grid {
+    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+    gap: var(--shelf-gap);
+  }
+}
+
+.wide-card {
+  display: block;
+  width: 100%;
+}
+
+.wide-surface {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: 0 1px 2px var(--shadow-soft);
+  transition:
+    transform 240ms var(--ease-out),
+    box-shadow 240ms var(--ease-out);
+}
+
+@media (min-width: 600px) {
+  .wide-surface {
+    aspect-ratio: 2.2 / 1;
+  }
+}
+
+/* The text column sits left, so the subject is kept to the right. */
+.wide-surface .art {
+  object-position: 70% center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wide-card:hover .wide-surface {
+    transform: scale(1.02);
+    box-shadow:
+      0 20px 48px var(--shadow),
+      0 0 0 0.5px var(--stroke-strong);
+  }
+}
+
+.wide-card:active .wide-surface {
+  transform: scale(0.99);
+}
+
+.wide-card:focus-visible {
+  outline: none;
+}
+
+.wide-card:focus-visible .wide-surface {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.wide-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.62) 42%, rgba(0, 0, 0, 0.1) 72%, transparent 100%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, transparent 45%);
+}
+
+.wide-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: clamp(16px, 2.4vw, 26px);
+  max-width: 70%;
+  text-align: left;
+}
+
+.wide-eyebrow {
+  position: absolute;
+  top: clamp(16px, 2.4vw, 26px);
+  left: clamp(16px, 2.4vw, 26px);
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wide-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.wide-chip .live-dot {
+  color: var(--red);
+  background: var(--red);
+}
+
+.wide-team {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wide-team .crest {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+}
+
+.wide-team-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: 800 clamp(18px, 2vw, 28px) / 1.05 var(--font-display);
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wide-team-score {
+  font: 800 clamp(20px, 2.2vw, 30px) / 1 var(--font-rounded);
+  font-variant-numeric: tabular-nums;
+}
+
+.wide-league {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 4px;
+  color: var(--label-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wide-league-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Phone: the frame is narrow, so the text takes the whole width over a
+   heavier scrim rather than a 70% column with truncated names. */
+@media (max-width: 739px) {
+  .wide-scrim {
+    background:
+      linear-gradient(to right, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.55) 55%, rgba(0, 0, 0, 0.25) 100%),
+      linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 55%);
+  }
+
+  .wide-content {
+    max-width: 100%;
+    gap: 5px;
+    padding: 16px;
+  }
+
+  .wide-eyebrow {
+    top: 16px;
+    left: 16px;
+  }
+
+  .wide-team {
+    gap: 10px;
+  }
+
+  .wide-team-name {
+    font-size: 17px;
+  }
+
+  .wide-team-score {
+    font-size: 19px;
+  }
+}
+
+/* ---------- league tiles ---------- */
+.tile-cell {
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 0.5px var(--stroke-strong);
+  transition:
+    transform 220ms var(--ease-out),
+    box-shadow 220ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover {
+    transform: scale(1.04);
+    box-shadow:
+      0 16px 36px var(--shadow),
+      inset 0 0 0 0.5px var(--stroke-strong);
+  }
+}
+
+.tile:active {
+  transform: scale(0.97);
+}
+
+.tile:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.tile-crest {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.tile-crest .crest {
+  width: 48%;
+  height: 48%;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
+}
+
+.tile-count {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-count::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.tile-caption {
+  padding: 10px 2px 0;
+  text-align: center;
+}
+
+/* Phone tiles are narrow: let league names take two lines before clipping. */
+@media (max-width: 739px) {
+  .tile-caption .card-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
+  .tile-caption .card-meta {
+    font-size: 12px;
+  }
+}
+
+/* ---------- promo / ad slot ---------- */
+.promo {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 36px var(--gutter) 0;
+  min-height: 220px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: linear-gradient(100deg, #3b1d6e 0%, #7c2bbf 32%, #c92d6e 62%, #f0761a 100%);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+}
+
+@media (min-width: 740px) {
+  .promo {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    min-height: clamp(220px, 24vw, 300px);
+  }
+}
+
+.promo-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  padding: clamp(22px, 3vw, 36px);
+}
+
+.promo-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 15px/1 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.promo-title {
+  margin: 4px 0 0;
+  font: 800 clamp(22px, 2.4vw, 32px) / 1.1 var(--font-display);
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.promo-sub {
+  margin: 0;
+  max-width: 44ch;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+  text-wrap: pretty;
+}
+
+.promo-cta {
+  margin-top: 8px;
+}
+
+.promo-tag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+@media (min-width: 740px) {
+  .promo-tag {
+    right: auto;
+    left: clamp(22px, 3vw, 36px);
+    top: 16px;
+  }
+}
+
+.promo-art {
+  position: relative;
+  min-height: 160px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 35%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 35%);
+}
+
+@media (max-width: 739px) {
+  .promo {
+    margin-top: 30px;
+    border-radius: 18px;
+  }
+
+  .promo-art {
+    order: -1;
+    min-height: 150px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+  }
+
+  /* Pull the copy up under the fading art so the slot is a card, not a tower. */
+  .promo-copy {
+    margin-top: -36px;
+    padding: 0 22px 22px;
+  }
+
+  .promo-sub {
+    font-size: 13px;
+  }
+}
+
+.promo-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  mix-blend-mode: luminosity;
+  opacity: 0.9;
+}
+
+/* ---------- standings ---------- */
+.home-standings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 14px var(--gutter) 0;
+}
+
+@media (min-width: 1000px) {
+  .home-standings-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--shelf-gap);
+  }
+}
+
+.tables-stage {
+  padding: 18px var(--gutter) 0;
+}
+
+.standings {
+  padding: 14px 12px 12px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 0.5px var(--stroke);
+}
+
+@media (min-width: 740px) {
+  .standings {
+    padding: 16px 20px 14px;
+  }
+}
+
+.standings-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+/* League marks (PL lion, UCL starball) are drawn in dark ink, so they need
+   a light disc to read against the dark surface. */
+.standings-head > .crest,
+.segment-label > .crest {
+  padding: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-sizing: content-box;
+}
+
+.standings-name {
+  margin: 0;
+  font: 700 17px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.standings-open {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--label-2);
+  font-size: 13px;
+  font-weight: 600;
+  transition: color 150ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .standings-open:hover {
+    color: var(--label);
+  }
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.standings-table th {
+  padding: 8px 6px;
+  color: var(--label-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+  border-bottom: 0.5px solid var(--hairline);
+}
+
+/* Rows are grids (see below), so cells are flex boxes to keep the figures
+   on the same centre line as the crests. */
+.standings-table td {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 6px;
+  text-align: center;
+  color: var(--label-2);
+}
+
+.standings-table tbody tr {
+  transition: background-color 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .standings-table tbody tr:hover {
+    background: var(--fill-hover);
+  }
+}
+
+.standings-table tbody tr + tr td {
+  border-top: 0.5px solid var(--hairline-soft);
+}
+
+.standings-table .col-rank {
+  width: 44px;
+  padding-left: 4px;
+  text-align: left;
+  color: var(--label);
+  font-weight: 600;
+}
+
+.standings-table td.col-rank {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.rank-mark {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: transparent;
+  transform: rotate(45deg);
+}
+
+.standings-table .col-club {
+  text-align: left;
+  color: var(--label);
+  font-weight: 600;
+}
+
+.standings-table td.col-club {
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.club-name,
+.club-short {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.club-short {
+  display: none;
+}
+
+@media (max-width: 599px) {
+  .club-name {
+    display: none;
+  }
+
+  .club-short {
+    display: inline;
+  }
+}
+
+.standings-table .col-pts {
+  color: var(--label);
+  font-weight: 700;
+}
+
+@media (max-width: 479px) {
+  .standings-table .col-wide {
+    display: none;
+  }
+}
+
+/* The club cell is a flex row, so the table needs explicit column widths
+   to keep numeric columns aligned. */
+.standings-table thead tr,
+.standings-table tbody tr {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) repeat(6, minmax(34px, 44px));
+  align-items: center;
+}
+
+/* Phone: fixed narrow figure columns so the club name gets the room; the
+   short club name is already in use below 600px. */
+@media (max-width: 599px) {
+  .standings-table thead tr,
+  .standings-table tbody tr {
+    grid-template-columns: 36px minmax(0, 1fr) repeat(6, 30px);
+  }
+
+  .standings-table th,
+  .standings-table td {
+    padding: 0 2px;
+  }
+
+  .standings-table th {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .standings-table .col-pts {
+    padding-right: 4px;
+  }
+}
+
+@media (max-width: 479px) {
+  .standings-table thead tr,
+  .standings-table tbody tr {
+    grid-template-columns: 36px minmax(0, 1fr) repeat(5, 30px);
+  }
+}
+
+.standings-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 12px 0 0;
+  padding: 10px 4px 0;
+  border-top: 0.5px solid var(--hairline);
+  list-style: none;
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.standings-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.standings-skeleton-rows {
+  display: grid;
+  gap: 4px;
+}
+
+.tables-footnote {
+  margin-top: 16px;
+}

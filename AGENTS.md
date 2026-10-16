@@ -1,6 +1,6 @@
 # Scoreline - agent guide
 
-A local React mirror-client for a pirate sports-streaming network (the Superabbit77 / RBTV+ family, Indonesian-facing).
+A local React mirror-client for a pirate sports-streaming network (Indonesian-facing; the network family is deliberately unnamed in this repo).
 The app mirrors their match listings from the protobuf feed and embeds their actual video streams.
 There is no backend - only Vite dev-server middleware - and every domain the source network uses is a time bomb that rotates as it gets blocked.
 This guide is written for an agent with an empty context window: read it top to bottom before touching the streaming pipeline.
@@ -22,13 +22,15 @@ Three host families, each rotating independently.
 
 | Family | What it serves | Discovered from | Resolver |
 |---|---|---|---|
-| Entry hosts (`www.***REMOVED****.casa/io/ru`, `site04.***REMOVED***77*`) | The full site: match pages, deep links, client-side handoff to the live mirror and player | Compiled-in candidate lists, plus 301 walks from old-generation hosts | `resolveEntryOrigin` in `src/api/source-sites.ts` |
-| Data hosts (`apis-data*.***REMOVED***.ru`) | The protobuf feed (`/sfver%3Ctoken%3E/api/match/live?...`) and the params API (`/api/common/params`) | An inline config block on the entry page (slashes escaped as `\u002F`) | `resolveApiHosts` in `src/api/source-sites.ts` |
-| Player hosts (`mimi01eo.***REMOVED***.cfd` and siblings) | The bare player page (`/{lang}/player.html?mdata={base64}&ilang={lang}`) - the whole stream, no ads | The params API's `iframePlayerDomains` lists, unioned from anywhere in its tree | `resolvePlayerHosts` in `src/api/source-sites.ts` |
+| Entry hosts | The full site: match pages, deep links, client-side handoff to the live mirror and player | Candidate lists served by `/api/config` from `.env`, plus 301 walks from old-generation hosts | `resolveEntryOrigin` in `src/api/source-sites.ts` |
+| Data hosts | The protobuf feed (`/sfver%3Ctoken%3E/api/match/live?...`) and the params API (`/api/common/params`) | An inline config block on the entry page (slashes escaped as `\u002F`) | `resolveApiHosts` in `src/api/source-sites.ts` |
+| Player hosts | The bare player page (`/{lang}/player.html?mdata={base64}&ilang={lang}`) - the whole stream, no ads | The params API's `iframePlayerDomains` lists, unioned from anywhere in its tree | `resolvePlayerHosts` in `src/api/source-sites.ts` |
+
+The hosts themselves live only in the gitignored `.env` (`SCORELINE_ENTRY_HOSTS`, `SCORELINE_REDIRECTING_ENTRY_HOSTS`, `SCORELINE_API_HOSTS`, `SCORELINE_PLAYER_HOSTS`; copy `.env.example`). They are served to the app through the `/api/config` dev middleware and are never compiled into the client bundle or named anywhere in the repo.
 
 The chain is: entry origin → api hosts → params → player hosts.
 Each stage is cached in localStorage (10-minute TTL, keys `scoreline:entry-origin`, `scoreline:api-hosts`, `scoreline:player-hosts`), falls back to the stale cache, and finally to compiled-in defaults verified on the date in this file.
-No hardcoded host is ever used as more than a last-resort default; discovery is the real path.
+No host list is ever compiled into the client; the env-seeded defaults are last-resort only - discovery is the real path.
 
 ## The direct player contract
 
@@ -96,7 +98,8 @@ Replace the ids with a match that is actually live at the time - grab one from t
 ### The gate, reproduced server-side
 
 ```bash
-PLAYER='https://mimi01eo.***REMOVED***.cfd/id/player.html'
+# PLAYER: any host from SCORELINE_PLAYER_HOSTS in .env
+PLAYER="https://$(grep '^SCORELINE_PLAYER_HOSTS=' .env | cut -d= -f2 | cut -d, -f1)/id/player.html"
 UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
 # With Referer + iframe metadata: expect 200 text/html
 curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' "$PLAYER?mdata=$(printf '4513837_1' | base64)&ilang=id" \
@@ -111,7 +114,7 @@ If the first command stops returning 200, the gate moved - that is the signal to
 
 ```bash
 curl -sS -G 'http://localhost:5188/api/probe-player' \
-  --data-urlencode 'url=https://mimi01eo.***REMOVED***.cfd/id/player.html?mdata=NDUxMzgzN18x&ilang=id'
+  --data-urlencode "url=$PLAYER?mdata=NDUxMzgzN18x&ilang=id"
 # Expect {"url":...,"status":200,"ok":true}; a dead host returns 502 with a message
 ```
 
@@ -120,7 +123,8 @@ curl -sS -G 'http://localhost:5188/api/probe-player' \
 Fetch it from the browser console (a curl without browser-ish headers gets an HTML bot stub):
 
 ```js
-fetch("https://apis-data10.***REMOVED***.ru/api/common/params", { cache: "no-store" })
+// API_HOST: any host from SCORELINE_API_HOSTS in .env
+fetch(`https://${API_HOST}/api/common/params`, { cache: "no-store" })
   .then(r => r.text())
   .then(t => console.log(t.slice(0, 400))) // scrambled JSON: expect ]C3EGA=FD-ish garbage that decodes at shift 47
 ```
@@ -131,7 +135,7 @@ If no shift yields player hosts, re-reverse-engineer: pull their match page HTML
 ### The entry page (api-host discovery)
 
 ```bash
-curl -sS 'https://www.***REMOVED***18.casa/id' | grep -o 'https:\\u002F\\u002Fapis-data[a-z0-9.-]*' | head
+curl -sS "https://$(grep '^SCORELINE_ENTRY_HOSTS=' .env | cut -d= -f2 | cut -d, -f1)/id" | grep -o 'https:\\u002F\\u002Fapis-data[a-z0-9.-]*' | head
 # After unescaping \u002F -> /, these are the feed hosts the entry page itself ships
 ```
 
@@ -151,8 +155,8 @@ Each entry is `{at: <epoch ms>, value: ...}`; `at` older than 10 minutes means t
 
 The full log of what was true when; re-verify before relying on any of it.
 
-- 2026-10-16: entry hosts serving 200 with CORS-open pages: `www.***REMOVED***18.casa`, `www.***REMOVED***.io`, `www.rbtv77.ru`, `site04.***REMOVED***77hd.skin`, `site04.***REMOVED***77.my`.
-- 2026-10-16: old-generation hosts (`***REMOVED***17.lol`, `***REMOVED***.com`, `***REMOVED***77hd.skin`, `***REMOVED***77.my`) 301 to the current generation without ACAO - only walkable server-side.
+- 2026-10-16: the host lists (5 direct entry hosts, 4 redirecting old-generation hosts, 2 data hosts, 3 player hosts) moved into `.env`; this file no longer names any of them.
+- 2026-10-16: old-generation entry hosts 301 to the current generation without ACAO - only walkable server-side.
 - 2026-10-16: feed path `/sfver%3Ctoken%3E/api/match/live` - the token placeholder is ignored by the backend, only the host moves.
 - 2026-10-16: params cipher shift 47, key `iframePlayerDomains` under brand-digit keys (`snd`, `trd`, `foth`, ...), sometimes nested one level deep as JSON strings.
 - 2026-10-16: player gate Referer-based (401 without Referer, 200 with any); a Referer alone also passed on this date; no X-Frame-Options, no frame-ancestors.
