@@ -48,8 +48,12 @@
   -webkit-backdrop-filter: saturate(180%) blur(30px);
   backdrop-filter: saturate(180%) blur(30px);
   border-right: 0.5px solid var(--hairline);
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* The panel itself never scrolls: the nav region below owns the only
+     Y axis, so the bottom controls (refresh, theme, TV Mode) are pinned
+     below it at any viewport height - on a TV (TVBro ~540px tall, no
+     scroll wheel on the remote) the whole-panel scroll used to leave
+     them below the fold, unreachable. */
+  overflow: hidden;
   overscroll-behavior: contain;
   scrollbar-width: none;
   contain: layout style;
@@ -64,6 +68,10 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Pinned rows: only the nav region may give way when the viewport is
+     short - otherwise flex-shrink squashes these (and the nav rows) to
+     slivers instead of letting the nav scroll. */
+  flex: none;
   margin-bottom: 12px;
 }
 
@@ -71,6 +79,26 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* The sidebar's only scroll region: nav rows overflow into here while
+     the bottom rows stay pinned, so the D-pad (tvnav keeps focused rows
+     revealed via scrollIntoView) can always reach every row. min-height
+     is what lets a flex child actually shrink below its content, and the
+     children below keep their own height - shrinking them instead would
+     squash 40px rows into unreadable slivers at TV console heights. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.sidebar-nav > * {
+  flex: none;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 /* One row shape for nav items, the toggle, the search field and the
@@ -346,8 +374,9 @@
 
 /* Rows pinned above the brand: the TV-friendly refresh (page reload is
    awkward from a TV's remote) and the appearance switch. Same geometry
-   as a nav row. */
+   as a nav row. Never shrinks - see the sidebar-top note. */
 .sidebar-bottom {
+  flex: none;
   margin-top: auto;
   padding-top: 18px;
 }
@@ -368,6 +397,7 @@
 .sidebar-footer {
   display: flex;
   align-items: center;
+  flex: none;
   gap: 10px;
   padding: 14px 10px 0 var(--row-pad);
   color: var(--label-2);

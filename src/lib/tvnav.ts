@@ -55,6 +55,11 @@ const centerOf = (rect: DOMRect) => ({ x: rect.left + rect.width / 2, y: rect.to
 
 const isRendered = (element: HTMLElement) => {
   if (element.hasAttribute("hidden") || element.getAttribute("aria-hidden") === "true") return false;
+  // visibility: hidden (the collapsed "More sports" extras) still lays out
+  // boxes, so client rects alone pass them: the picker must not walk focus
+  // into rows the visitor cannot see. Computed visibility inherits, so the
+  // check on the element itself covers hidden ancestors too.
+  if (getComputedStyle(element).visibility === "hidden") return false;
   // offsetParent is null for fixed-position elements, which is exactly what
   // the toolbar is - getClientRects is the rendered test that covers both.
   return element.getClientRects().length > 0;
