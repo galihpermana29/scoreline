@@ -52,7 +52,7 @@ The load event of a cross-origin iframe cannot tell a healthy player from a 401 
 So the watch screen never mounts the direct player blind.
 
 1. `pickPlayerUrl` (`src/api/player.ts`) probes each listed host's exact embed URL, in epoch-rotated order.
-2. Each probe goes through `/api/probe-player?url=...` (`probePlayerPlugin` in `vite.config.ts`), a dev middleware that fetches the URL server-side with the app's own Referer plus real iframe `Sec-Fetch` metadata - exactly what the browser's iframe navigation will send.
+2. Each probe goes through `/api/probe-player?url=...`, which fetches the URL server-side with the app's own Referer plus real iframe `Sec-Fetch` metadata - exactly what the browser's iframe navigation will send. One implementation lives in `server/endpoints.ts`, served by the Vite middleware in dev and by the thin Vercel Edge functions in `api/` in production.
 3. The first host that answers 2xx is the one mounted; a 401/403 means refused, anything else means unreachable.
 4. If every host refuses or none answers, the screen auto-falls back to the "page" embed with a notice, instead of showing a blank frame that claims to be healthy.
 5. If the middleware is absent (a static production build), the client classifies probes as "unknown" and embeds the first candidate as before - absence of evidence is not failure, and the load watchdog (`EMBED_LOAD_TIMEOUT_MS`, 15s) still judges the mounted frame: first stall re-resolves everything fresh and remounts once, second stall shows the retry notice.
@@ -98,8 +98,8 @@ Replace the ids with a match that is actually live at the time - grab one from t
 ### The gate, reproduced server-side
 
 ```bash
-# PLAYER: any host from SCORELINE_PLAYER_HOSTS in .env
-PLAYER="https://$(grep '^SCORELINE_PLAYER_HOSTS=' .env | cut -d= -f2 | cut -d, -f1)/id/player.html"
+# PLAYER: any host from SCORELINE_PLAYER_HOSTS in .env (-f2-: values contain = in the scheme)
+PLAYER="$(grep '^SCORELINE_PLAYER_HOSTS=' .env | cut -d= -f2- | cut -d, -f1)/id/player.html"
 UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
 # With Referer + iframe metadata: expect 200 text/html
 curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' "$PLAYER?mdata=$(printf '4513837_1' | base64)&ilang=id" \
@@ -135,7 +135,7 @@ If no shift yields player hosts, re-reverse-engineer: pull their match page HTML
 ### The entry page (api-host discovery)
 
 ```bash
-curl -sS "https://$(grep '^SCORELINE_ENTRY_HOSTS=' .env | cut -d= -f2 | cut -d, -f1)/id" | grep -o 'https:\\u002F\\u002Fapis-data[a-z0-9.-]*' | head
+curl -sS "$(grep '^SCORELINE_ENTRY_HOSTS=' .env | cut -d= -f2- | cut -d, -f1)/id" | grep -o 'https:\\u002F\\u002Fapis-data[a-z0-9.-]*' | head
 # After unescaping \u002F -> /, these are the feed hosts the entry page itself ships
 ```
 
@@ -167,7 +167,7 @@ The full log of what was true when; re-verify before relying on any of it.
 ## Environment quirks that look like bugs but are not
 
 - Video start requires a real user click: synthetic (CDP) clicks lack user activation, so automated verification ends at "player chrome renders, no ads".
-- The probe and redirect middlewares are dev-only: a production build needs real endpoints with the same request/response shapes, or the app silently degrades to watchdog-only recovery.
+- The three endpoints (`/api/config`, `/api/probe-player`, `/api/resolve-redirect`) are Vite middlewares in dev and Vercel Edge functions in production, both delegating to `server/endpoints.ts`. The Vercel project must have the `SCORELINE_*` env vars set in its settings; without them the app runs discovery-only, and a cold visitor with empty caches sees an empty feed.
 - Screenshots taken right after navigation race lazy image loads and look like placeholders; wait a beat before judging the UI.
 - The watch screen's overlay view-state can flap while the feed refreshes under it; re-snapshot before concluding a UI bug.
 - The feed only covers a window around kick-off; a deep link to an old match legitimately shows "Stream unavailable".
