@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { Match } from "../domain/match";
 import { matchLabel } from "../domain/match";
 import { formatLongDate, formatTime } from "../lib/format";
@@ -32,7 +32,13 @@ import { downloadCalendarEvent } from "../lib/calendar";
  *   referer-less load gets 403 from their edge. A foreign origin like a
  *   vercel.app deployment can never satisfy that list, so the full page -
  *   whose nested player iframe carries their own domain as the Referer - is
- *   the only embed that works everywhere.
+ *   the only embed that works everywhere. The page's video is zoom-cropped
+ *   to fill the frame (the PAGE_EMBED_* constants below), cropping their
+ *   banners out of view; a toolbar toggle returns to the whole page. What
+ *   still shows by default are the ads that drift into the crop and the
+ *   ones they float inside the video - the visitor consented to them as
+ *   the default state - and a separate opt-in "Hide ads" toolbar toggle
+ *   masks the drifting bands black for visitors who prefer that trade.
  * - "player" embeds their dedicated bare player page directly, skipping the
  *   match page and its banner ads entirely - the player gets every pixel of
  *   the frame. The URL is constructed here (see src/api/player.ts): mdata is
@@ -78,6 +84,48 @@ import { downloadCalendarEvent } from "../lib/calendar";
 
 /** How long the embed may stay silent after mounting before it counts as stalled. */
 const EMBED_LOAD_TIMEOUT_MS = 15_000;
+
+/**
+ * The page embed's zoom crop. Verified live 2026-10-16 on the mirror page
+ * the match URL hands itself off to: at any viewport >= their player width
+ * the player iframe is 750px wide (16:9), horizontally centred, at a fixed
+ * 80px from the top; below that width it goes fluid (full width, same top).
+ * Rendering the embedded page at exactly 750px wide therefore pins the
+ * video box at (0, 80, 750, 750*9/16) on the frame, and scaling the frame
+ * about that box fills the shell with the video alone - a uniform scale, so
+ * the stream's ratio never changes - while their header, banner ads, mirror
+ * link and tabs fall outside the visible crop.
+ *
+ * The base height deliberately starves the embedded page of any scrollable
+ * overflow: their ad scripts inject banners below the video (embedded doc
+ * measured ~3200px at 750 wide, 2026-10-16, vs 1249 clean) and then
+ * scroll-centre their banners, sliding the video out of the crop
+ * (scrolling="no" does NOT stop programmatic scrolling in Chromium - verified
+ * live; a 3000px frame was still shorter than the ad-inflated document and
+ * the scroll still happened). 10000px clears the document by several banner
+ * rounds, which kills that scroll path entirely - verified: at 10000 the big
+ * ~200px displacement is gone.
+ *
+ * What starvation cannot fix: once framed, their layout reflows over the
+ * first minute and the video container itself slides up the page (top edge
+ * measured 80px at mount, ~52px at 26s, and past the top edge once their
+ * banners settled - the worst measured leak was a ~110px band of their
+ * share-strip and banners inside the crop; the anchor is a moving target no
+ * constant can track). Showing that leak is the default: it is their ad
+ * inventory, the visitor consented to it the moment they opened a mirrored
+ * pirate stream, and silently blacking out chunks of the picture is not our
+ * call to make. The optional "Hide ads" toolbar toggle opts into the
+ * PAGE_EMBED_MASK overlays - plain black bars, top and bottom, sized to the
+ * worst measured drift so the leak never renders in that mode - at the
+ * price of cropping the same strips off the video itself while their
+ * layout sits still. The choice is remembered per browser.
+ */
+const PAGE_EMBED_BASE = { width: 750, height: 10000 } as const;
+const PAGE_EMBED_VIDEO = { x: 0, y: 80, w: 750, h: (750 * 9) / 16 } as const;
+/** Opt-in black bars covering the worst measured anchor drift; in video-box px. */
+const PAGE_EMBED_MASK = { top: 16, bottom: 110 } as const;
+const PAGE_ZOOM_KEY = "scoreline:page-zoom";
+const HIDE_ADS_KEY = "scoreline:hide-ads";
 const kickHint = (match: Match): string =>
   match.status.kind === "live" ? "In progress" : match.status.kind === "upcoming" ? "Kick-off" : "Final";
 
@@ -239,6 +287,86 @@ export const StreamScreen = ({
     return () => clearTimeout(timer);
   }, [fullscreenDenied]);
 
+  // The zoom crop's on/off: on by default, remembered across visits.
+  const [zoom, setZoom] = useState(() => {
+    try {
+      return localStorage.getItem(PAGE_ZOOM_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleZoom = () =>
+    setZoom((current) => {
+      try {
+        localStorage.setItem(PAGE_ZOOM_KEY, current ? "0" : "1");
+      } catch {
+        // Private mode: the preference just does not persist.
+      }
+      return !current;
+    });
+
+  // The opt-in counterpart to the crop: by default the source's ads are
+  // shown as-is (the visitor consented to them by watching this embed at
+  // all), and only a visitor who flips this toggle gets the PAGE_EMBED_MASK
+  // black bars over the bands their layout drifts into the crop.
+  const [hideAds, setHideAds] = useState(() => {
+    try {
+      return localStorage.getItem(HIDE_ADS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleHideAds = () =>
+    setHideAds((current) => {
+      try {
+        localStorage.setItem(HIDE_ADS_KEY, current ? "0" : "1");
+      } catch {
+        // Private mode: the preference just does not persist.
+      }
+      return !current;
+    });
+
+  // The shell's live size drives the crop's scale, so the video keeps
+  // filling it through resizes and the fullscreen switch. The box is read
+  // synchronously on mount - the shell already has its layout by the time
+  // layout effects run - and the observers only carry later changes; some
+  // embedded browsers throttle ResizeObserver delivery, and the crop must
+  // not depend on it ever firing (verified 2026-10-16: the IDE's browser
+  // never delivers even the initial observation).
+  const [shellBox, setShellBox] = useState<{ w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    if (shell === null) return;
+    const read = () => setShellBox({ w: shell.clientWidth, h: shell.clientHeight });
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(shell);
+    window.addEventListener("resize", read);
+    document.addEventListener("fullscreenchange", read);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", read);
+      document.removeEventListener("fullscreenchange", read);
+    };
+  }, []);
+
+  // The page-embed frame style: at base size, scaled about the measured
+  // video box so it covers the whole shell (cover, never stretch: the
+  // shell is 16:9 by design, so the crop is pixel-exact in practice).
+  const pageZoomStyle: CSSProperties | undefined = (() => {
+    if (!zoom || embedMode !== "page" || shellBox === null) return undefined;
+    const { w, h } = shellBox;
+    const scale = Math.max(w / PAGE_EMBED_VIDEO.w, h / PAGE_EMBED_VIDEO.h);
+    const tx = w / 2 - (PAGE_EMBED_VIDEO.x + PAGE_EMBED_VIDEO.w / 2) * scale;
+    const ty = h / 2 - (PAGE_EMBED_VIDEO.y + PAGE_EMBED_VIDEO.h / 2) * scale;
+    return {
+      width: PAGE_EMBED_BASE.width,
+      height: PAGE_EMBED_BASE.height,
+      transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+      transformOrigin: "0 0",
+    };
+  })();
+
   const startEmbed = () => {
     setEmbedReady(false);
     setEmbedFailures(0);
@@ -341,6 +469,34 @@ export const StreamScreen = ({
           Page
         </button>
       </div>
+      {embedMode === "page" ? (
+        <button
+          className={`toolbar-button${zoom ? " player-embed-mode-on" : ""}`}
+          onClick={toggleZoom}
+          title={
+            zoom
+              ? "The video is scaled to fill the frame, cropping the source page's banners - click to show the whole page"
+              : "Zoom the source page's video to fill the frame instead of showing the whole page"
+          }
+        >
+          <Icon name="zoom" size={16} />
+          Zoom
+        </button>
+      ) : null}
+      {embedMode === "page" && zoom ? (
+        <button
+          className={`toolbar-button${hideAds ? " player-embed-mode-on" : ""}`}
+          onClick={toggleHideAds}
+          title={
+            hideAds
+              ? "On: the banner bands that drift into the crop are masked black, at the price of cropping those strips off the picture - click to show the source's ads"
+              : "The source's banner ads are shown as-is - click to mask the bands that drift into the crop"
+          }
+        >
+          <Icon name="shield" size={16} />
+          Hide ads
+        </button>
+      ) : null}
       <button
         className="toolbar-button"
         onClick={toggleFullscreen}
@@ -387,7 +543,13 @@ export const StreamScreen = ({
               {embedMounted ? (
                 <iframe
                   key={`${embedMode}-${embedEpoch}`}
-                  className="player-embed"
+                  className={`player-embed${pageZoomStyle !== undefined ? " player-embed-zoom" : ""}`}
+                  style={pageZoomStyle}
+                  // The crop is a viewport-relative pan: scrolling the embedded
+                  // page inside the frame would slide the video out of it, so
+                  // the frame is locked while zoomed (their own page has
+                  // nothing worth scrolling to below the video anyway).
+                  scrolling={pageZoomStyle !== undefined ? "no" : undefined}
                   src={embedSrc}
                   title={
                     embedMode === "player"
@@ -404,6 +566,26 @@ export const StreamScreen = ({
                   referrerPolicy="no-referrer-when-downgrade"
                   onLoad={() => setEmbedReady(true)}
                 />
+              ) : null}
+              {pageZoomStyle !== undefined && embedMounted && hideAds ? (
+                <>
+                  {/* Opt-in drift covers: their framed layout reflows the
+                      video anchor up the page over the first minute,
+                      leaking the share-strip and banners into the crop;
+                      sized to the worst measured drift band (see
+                      PAGE_EMBED_MASK). Off by default - most visitors see
+                      the source's ads rather than a cropped picture. */}
+                  <div
+                    aria-hidden
+                    className="player-embed-mask"
+                    style={{ top: 0, height: `${(PAGE_EMBED_MASK.top / PAGE_EMBED_VIDEO.h) * 100}%` }}
+                  />
+                  <div
+                    aria-hidden
+                    className="player-embed-mask"
+                    style={{ bottom: 0, height: `${(PAGE_EMBED_MASK.bottom / PAGE_EMBED_VIDEO.h) * 100}%` }}
+                  />
+                </>
               ) : null}
               {!embedReady ? (
                 <div className="player-embed-loading" role="status">

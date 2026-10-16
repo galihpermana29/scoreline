@@ -305,6 +305,28 @@
   background: #0a0a0c;
 }
 
+/* Zoom crop of the page embed: the frame renders the source page at the
+   measured base width and is scaled about its video box (inline transform),
+   so the video alone fills the shell while their banners fall outside the
+   crop. The base inset is over-constrained by the inline size; left+top win. */
+.player-embed.player-embed-zoom {
+  right: auto;
+  bottom: auto;
+  will-change: transform;
+}
+
+/* Drift covers over the zoom crop: plain black bars matching the shell's
+   rounded corners, above the frame and below its loading state, dead to
+   pointer events so nothing inside the stream is blocked. */
+.player-embed-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  background: #000;
+  pointer-events: none;
+}
+
 /* Big centered play affordance on the simulated shell: mounts the embed.
    z-index lifts it above the decorative score overlay that follows it in
    DOM order and would otherwise swallow the click. */

@@ -94,18 +94,22 @@ const fetchPayload = async (sportType: number): Promise<Uint8Array> => {
 };
 
 /**
- * Field 4 status codes are partly sport-specific enums (observed: football
- * 101 in-play, basketball 203, baseball 400, volleyball 1300, handball 1600 -
- * all with the kick-off already passed, i.e. mid-game). Only 10000 is a
- * confirmed terminal code and keeps its final score in the live brief.
- * Rows without a status code are schedule entries: kick-off in the future
- * means not started; a passed kick-off means the entry is stale (the edge
- * cache lags behind real time).
+ * Field 4 status codes, decoded against the source's own web bundle
+ * (statics f4e362bca14.js, verified 2026-10-16):
+ * - FINISH is exactly codes 100 and 10000 - nothing else is ever terminal,
+ *   and a row without a status code is NEVER finished on their site
+ *   (it falls through to the All list with a VS display).
+ * - ONGOING is per-sport live enums (football 101-105, basketball 200-214,
+ *   tennis 300, ..., other 9000).
+ * - COMING is 0 plus cancels/postponements (10001, 10002, 10101-10103).
+ * The null-code rows the live feed still lists after kick-off are long
+ * sessions still in progress (golf rounds, stage events) - their page shows
+ * them as ongoing via the stream list, so they belong in our Live shelf.
  */
 const parseStatus = (code: number | null, kickoff: Date | null): MatchStatus => {
   const started = kickoff !== null && kickoff.getTime() <= Date.now();
   if (code === 10000) return { kind: "finished", label: "FT" };
-  if (code === null) return started ? { kind: "finished", label: "FT" } : { kind: "upcoming" };
+  if (code === null) return started ? { kind: "live", label: "LIVE" } : { kind: "upcoming" };
   return { kind: "live", label: "LIVE" };
 };
 

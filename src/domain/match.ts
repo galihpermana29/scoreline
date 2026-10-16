@@ -82,3 +82,18 @@ export const groupByLeague = (matches: readonly Match[]): { league: League; matc
 
 export const byKickoff = (a: Match, b: Match): number =>
   (a.kickoff?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.kickoff?.getTime() ?? Number.MAX_SAFE_INTEGER);
+
+/**
+ * Women's fixture detector. The feed carries no explicit gender flag, but its
+ * naming conventions do: league names ("Women's League One", "WNBL Women",
+ * "Denmark Open, Women Singles", "WTA ..." - their tennis leagues are
+ * Italianised, so "donne"/"femminile" carrying ones count too), team
+ * nicknames ("... Women", "(w)", a trailing standalone "W"), and Indonesian
+ * prefixes/given names ("Putri"). Deliberately broad: a false positive only
+ * costs a match its priority slot, while a miss would put a women's fixture
+ * on the men's front shelves.
+ */
+const WOMENS_TEXT = /\bwomen\b|\bwoman\b|\bladies\b|\bwta\b|\bdonne\b|\bfemminil|\bfemale\b|\bputri\b|[(\[]w[)\]]|\bw\s*$/i;
+
+export const isWomens = (match: Match): boolean =>
+  WOMENS_TEXT.test(match.league.name) || WOMENS_TEXT.test(match.home.name) || WOMENS_TEXT.test(match.away.name);

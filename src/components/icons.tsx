@@ -27,6 +27,8 @@ export type IconName =
   | "more"
   | "calendar"
   | "arrow-up-right"
+  | "zoom"
+  | "shield"
   | "clear"
   | "sidebar"
   | "sun"
@@ -128,6 +130,14 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   "arrow-up-right": <path {...STROKE} d="M6 14 14 6M7.6 6H14v6.4" />,
+  zoom: (
+    <>
+      <circle {...STROKE} cx="8.6" cy="8.6" r="5.4" />
+      <path {...STROKE} d="m12.6 12.6 4.2 4.2" />
+      <path {...STROKE} strokeWidth={1.4} d="M8.6 6.5v4.2M6.5 8.6h4.2" />
+    </>
+  ),
+  shield: <path {...STROKE} d="M10 2.8 16.4 5v4.4c0 3.9-2.7 6.6-6.4 8-3.7-1.4-6.4-4.1-6.4-8V5z" />,
   clear: (
     <>
       <circle cx="10" cy="10" r="8" fill="currentColor" />

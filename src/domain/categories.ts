@@ -1,4 +1,4 @@
-import { byKickoff, type Match } from "./match";
+import { byKickoff, isWomens, type Match } from "./match";
 
 /**
  * A browse category: either the live cross-sport view or one sport. The top
@@ -69,9 +69,18 @@ const PRIORITY = new Map<number, number>(
 export const sportPriority = (sportId: number | undefined): number =>
   sportId === undefined ? PRIORITY.size + 1 : (PRIORITY.get(sportId) ?? PRIORITY.size + 1);
 
-/** Top-category sports first (in sidebar order), then kickoff order within. */
+/**
+ * Priority band for shelf ordering. The front of the app is "top categories
+ * + men's": a women's fixture never rides its sport's pinned band, whatever
+ * the sport - it sinks to the shared tail with the unpinned sports and
+ * orders by kick-off there. Narrow misses ("if it's women it's not priority")
+ * are preferred to broad ones, so `isWomens` errs towards flagging.
+ */
+export const matchBand = (match: Match): number => (isWomens(match) ? PRIORITY.size + 1 : sportPriority(match.sportId));
+
+/** Top-category men's first (in sidebar order), then everything else by kick-off. */
 export const byPriority = (a: Match, b: Match): number =>
-  sportPriority(a.sportId) - sportPriority(b.sportId) || byKickoff(a, b);
+  matchBand(a) - matchBand(b) || byKickoff(a, b);
 
 export const sportSlug = (sport: string): string =>
   sport
