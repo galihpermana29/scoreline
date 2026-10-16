@@ -7,7 +7,7 @@ import { EASE_OUT, type OpenMatch } from "./components/tv";
 import { TOP_CATEGORIES, byPriority, categoryForSlug } from "./domain/categories";
 import { byKickoff, type Match } from "./domain/match";
 import { canWatch, matchHref } from "./lib/route";
-import { back, browsePath, navigate, useLocation, type BrowseRoute, type Route } from "./lib/router";
+import { navigate, useLocation, type BrowseRoute, type Route } from "./lib/router";
 import { useAsync } from "./lib/useAsync";
 import { useMediaQuery } from "./lib/useMediaQuery";
 import { CategoryScreen } from "./screens/CategoryScreen";
@@ -116,6 +116,17 @@ export const App = () => {
   const [selected, setSelected] = useState<Match | null>(null);
   const closeSheet = useCallback(() => setSelected(null), []);
 
+  /**
+   * Closing the watch layer always lands on the homepage - a jump, not a
+   * history walk, so a stream opened from any section (or from another
+   * stream via the related shelf) exits straight to home instead of
+   * popping back one URL at a time. Replacing (not pushing) drops the
+   * stream URL from the stack, so the browser's back can never re-open
+   * the stream, and keepScroll keeps the frozen document scroll so the
+   * feed underneath is exactly where the user left it.
+   */
+  const exitWatch = useCallback(() => navigate("/", { replace: true, keepScroll: true }), []);
+
   // The browse surface stays mounted under the watch layer, so it needs to
   // remember which section it was showing when a match deep link is on top.
   const lastBrowse = useRef<BrowseRoute>(location.route.kind === "match" ? { kind: "home" } : location.route);
@@ -138,7 +149,7 @@ export const App = () => {
   useEffect(() => {
     if (watching === null) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && document.fullscreenElement === null && selected === null) back();
+      if (event.key === "Escape" && document.fullscreenElement === null && selected === null) exitWatch();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -170,8 +181,6 @@ export const App = () => {
     setSelected(null);
     navigate(href, { autoplay: true });
   }, []);
-
-  const exitWatch = useCallback(() => back(browsePath(lastBrowse.current)), []);
 
   const streamMatch = watching === null ? null : (feed.matches.find((candidate) => candidate.id === `ae-${watching.match.matchId}`) ?? null);
   const related = useMemo(
