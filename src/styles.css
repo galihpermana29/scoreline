@@ -1577,6 +1577,53 @@ img.crest.is-loaded {
   outline-offset: 2px;
 }
 
+/* Segmented player/page mode switch on the live bar. Shares the pill look;
+   the joined middle keeps the group reading as one control. */
+.player-embed-mode {
+  display: inline-flex;
+}
+
+.player-embed-mode button {
+  padding: 7px 12px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.player-embed-mode button:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.player-embed-mode button:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.player-embed-mode button:hover:not(:disabled) {
+  color: var(--label);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.player-embed-mode button:focus-visible {
+  outline: 2px solid var(--label);
+  outline-offset: 2px;
+}
+
+.player-embed-mode button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* The active segment keeps its highlight even on hover; the later rule
+   out-ranks the equal-specificity hover above. */
+.player-embed-mode button.player-embed-mode-on {
+  color: var(--label);
+  background: rgba(0, 0, 0, 0.72);
+}
+
 /* The shell drops its letterbox ratio while fullscreen so the embedded page
    gets every pixel; the pills stay overlaid and usable. */
 .player-shell:fullscreen {

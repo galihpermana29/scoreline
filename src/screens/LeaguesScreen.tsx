@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo } from "react";
-import { MatchCard, Shelf } from "../components/tv";
+import { Artwork, MatchCard, Shelf } from "../components/tv";
 import { Chevron, Crest, Notice } from "../components/ui";
-import { groupByLeague, byKickoff, type League, type Match } from "../domain/match";
+import { groupByLeague, byKickoff, sportThumb, type League, type Match } from "../domain/match";
 
 const FADE = { duration: 0.3, ease: [0.23, 1, 0.32, 1] } as const;
 
@@ -58,12 +58,14 @@ const LeagueGrid = ({ matches, onOpen }: { matches: readonly Match[]; onOpen: (l
         <Shelf key={sport} title={sport} count={leagues.length}>
           {leagues.map((group) => {
             const country = group.matches.find((match) => match.country)?.country ?? null;
+            const sportId = group.matches[0]?.sportId;
             return (
               <Tile
                 key={group.league.id}
                 title={group.league.name}
                 subtitle={country ?? sport}
                 badge={group.league.badge}
+                thumb={sportId !== undefined ? sportThumb(sportId) : null}
                 onClick={() => onOpen(group.league)}
               />
             );
@@ -78,17 +80,26 @@ const Tile = ({
   title,
   subtitle,
   badge,
+  thumb,
   onClick,
 }: {
   title: string;
   subtitle: string;
   badge: string | null;
+  thumb: string | null;
   onClick: () => void;
 }) => (
   <div className="card-cell">
     <button className="card tile" onClick={onClick} aria-label={title}>
       <span className="card-surface">
-        {badge ? <img className="tile-backdrop" src={badge} alt="" aria-hidden loading="lazy" /> : null}
+        {/* Same artwork family as the match cards: the sport's hero art
+            behind the league crest, falling back to the blurred-badge look
+            when there is no art for the sport or the file fails. */}
+        <Artwork
+          src={thumb}
+          fallback={badge ? <img className="tile-backdrop" src={badge} alt="" aria-hidden loading="lazy" /> : null}
+        />
+        <span className="card-scrim" aria-hidden />
         <span className="tile-badge">
           <Crest src={badge} name={title} size={96} />
         </span>
@@ -117,11 +128,20 @@ const LeagueDetail = ({
   const live = all.filter((match) => match.status.kind === "live");
   const upcoming = all.filter((match) => match.status.kind === "upcoming");
   const finished = [...all.filter((match) => match.status.kind === "finished")].reverse();
+  const sportId = all[0]?.sportId;
 
   return (
     <div className="screen">
       <section className="league-hero">
-        {league.badge ? <img className="league-hero-backdrop" src={league.badge} alt="" aria-hidden /> : null}
+        {/* The sport's hero art full-bleed, like the main hero; the blurred
+            league badge stays as the fallback when no art applies. */}
+        <Artwork
+          src={sportId !== undefined ? sportThumb(sportId) : null}
+          eager
+          fallback={
+            league.badge ? <img className="league-hero-backdrop" src={league.badge} alt="" aria-hidden /> : null
+          }
+        />
         <div className="hero-scrim" aria-hidden />
         <button className="back-pill" onClick={onBack}>
           <Chevron direction="left" />

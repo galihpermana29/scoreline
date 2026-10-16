@@ -43,30 +43,53 @@ const fallbackGradient = (match: Match): string => {
   return `radial-gradient(120% 140% at 0% 0%, hsl(${hue} 55% 34%), transparent 60%), radial-gradient(120% 140% at 100% 100%, hsl(${(hue + 140) % 360} 50% 28%), transparent 60%), #15151a`;
 };
 
-const Artwork = ({ match, size }: { match: Match; size: "medium" | "full" }) => {
+/**
+ * One shared artwork layer: the image fades in on load and falls back to
+ * whatever the caller renders when there is no src or the image fails.
+ * Match cards pass the gradient-and-crests fallback; league tiles and the
+ * league hero pass their blurred-badge look, so every surface keeps a sane
+ * appearance even when its artwork is missing.
+ */
+export const Artwork = ({
+  src,
+  fallback,
+  eager = false,
+}: {
+  src: string | null;
+  fallback: ReactNode;
+  eager?: boolean;
+}) => {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const src = match.thumb;
-  if (src && !failed)
+  if (src !== null && !failed)
     return (
       <img
         className={`art${loaded ? " is-loaded" : ""}`}
         src={src}
         alt=""
-        loading={size === "full" ? "eager" : "lazy"}
+        loading={eager ? "eager" : "lazy"}
         decoding="async"
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
       />
     );
-  return (
-    <div className="art art-fallback" style={{ background: fallbackGradient(match) }}>
-      <Crest src={match.home.badge} name={match.home.name} size={size === "full" ? 120 : 64} />
-      <span className="art-vs">vs</span>
-      <Crest src={match.away.badge} name={match.away.name} size={size === "full" ? 120 : 64} />
-    </div>
-  );
+  return <>{fallback}</>;
 };
+
+/** Match artwork with the gradient-and-crests fallback (used by cards and hero). */
+const MatchArtwork = ({ match, size }: { match: Match; size: "medium" | "full" }) => (
+  <Artwork
+    src={match.thumb}
+    eager={size === "full"}
+    fallback={
+      <div className="art art-fallback" style={{ background: fallbackGradient(match) }}>
+        <Crest src={match.home.badge} name={match.home.name} size={size === "full" ? 120 : 64} />
+        <span className="art-vs">vs</span>
+        <Crest src={match.away.badge} name={match.away.name} size={size === "full" ? 120 : 64} />
+      </div>
+    }
+  />
+);
 
 // ---------- tilt (tvOS parallax focus) ----------
 
@@ -109,7 +132,7 @@ export const MatchCard = ({ match, onSelect }: { match: Match; onSelect: (match:
         aria-label={`${matchLabel(match)}, ${match.league.name}`}
       >
         <span className="card-surface">
-          <Artwork match={match} size="medium" />
+          <MatchArtwork match={match} size="medium" />
           <span className="card-scrim" aria-hidden />
           <span className="card-top">
             <StatusBadge match={match} />
@@ -141,45 +164,6 @@ export const MatchCard = ({ match, onSelect }: { match: Match; onSelect: (match:
         <div className="card-meta">
           {match.league.name} · {match.status.kind === "upcoming" ? kickoffLabel(match, true) : match.sport}
         </div>
-      </div>
-    </div>
-  );
-};
-
-export const Tile = ({
-  title,
-  subtitle,
-  badge,
-  onClick,
-}: {
-  title: string;
-  subtitle: string;
-  badge: string | null;
-  onClick: () => void;
-}) => {
-  const tilt = useTilt();
-  const art = badge;
-  return (
-    <div className="card-cell">
-      <button
-        ref={tilt.ref as React.RefObject<HTMLButtonElement>}
-        className="card tile"
-        onClick={onClick}
-        onPointerMove={tilt.onPointerMove}
-        onPointerLeave={tilt.onPointerLeave}
-        aria-label={title}
-      >
-        <span className="card-surface">
-          {art ? <img className="tile-backdrop" src={art} alt="" aria-hidden loading="lazy" /> : null}
-          <span className="tile-badge">
-            <Crest src={badge} name={title} size={96} />
-          </span>
-          <span className="card-shine" aria-hidden />
-        </span>
-      </button>
-      <div className="card-caption">
-        <div className="card-title">{title}</div>
-        <div className="card-meta">{subtitle}</div>
       </div>
     </div>
   );
@@ -318,7 +302,7 @@ export const Hero = ({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.9, ease: [0.23, 1, 0.32, 1] }}
         >
-          <Artwork match={current} size="full" />
+          <MatchArtwork match={current} size="full" />
         </motion.div>
       </AnimatePresence>
       <div className="hero-scrim" aria-hidden />

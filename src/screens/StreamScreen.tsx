@@ -5,40 +5,59 @@ import { matchLabel } from "../domain/match";
 import { formatLongDate, formatTime } from "../lib/format";
 import { StatusBadge } from "../components/tv";
 import { Crest, Notice } from "../components/ui";
-import { sourceUrl } from "../lib/route";
+import { parseMatchRoute, sourceUrl } from "../lib/route";
 import { useEntryOrigin } from "../lib/useEntryOrigin";
+import { pickPlayerUrl } from "../api/player";
+import { usePlayerHosts } from "../lib/usePlayerHosts";
 
 /**
  * Simulated watch page. It mirrors the feed's own deep-link shape
  * (/{lang}/{sport}/{competitionSlug}-{id}/{matchSlug}.html). The simulated
- * player is the default view; pressing play mounts the real match page from
- * the source site as a sandboxed iframe (verified embeddable 2026-10-16: no
- * X-Frame-Options/frame-ancestors, and its internal entry -> mirror redirect
- * chain runs fine inside a frame, nesting its own gated player with the
- * correct Referer). Sandboxing allows scripts and same-origin storage so the
- * player boots, but withholds top-navigation and popups so the embedded
- * site's ads cannot hijack this tab. Stopping unmounts the frame, which also
- * tears down the stream.
+ * player is the default view; pressing play mounts the real stream from the
+ * source site as a sandboxed iframe. Sandboxing allows scripts and
+ * same-origin storage so the player boots, but withholds top-navigation and
+ * popups so the source site's ads cannot hijack this tab. Stopping unmounts
+ * the frame, which also tears down the stream.
+ *
+ * Two embed modes, switchable on the live bar (2026-10-16):
+ *
+ * - "player" (default) embeds their dedicated bare player page directly,
+ *   skipping the match page and its banner ads entirely - the player gets
+ *   every pixel of the frame. The URL is constructed here (see
+ *   src/api/player.ts): mdata is the base64 of {matchId}_{sportType}, and
+ *   the host list comes live from their params API (see
+ *   src/api/source-sites.ts). Before mounting, each candidate URL is probed
+ *   server-side exactly as the iframe will request it (see src/api/probe.ts)
+ *   and the first host that provably serves the page is the one embedded -
+ *   a cross-origin iframe fires its load event for a 401 text page as
+ *   happily as for the real player, so without the probe a tightened gate or
+ *   a dead host would look exactly like a healthy embed. When every listed
+ *   host refuses or none answers, this mode falls back to their own match
+ *   page on its own, which still hands itself off to the live player
+ *   client-side, and says so instead of showing a blank frame. The player
+ *   page's gate was verified to accept any Referer as long as the load is a
+ *   real iframe load, which a browser satisfies natively; the frame
+ *   therefore never sets a no-referrer policy.
+ * - "page" embeds the full match page as before, kept as the fallback for
+ *   the day the direct player's gate or layout changes - their own page
+ *   still hands itself off to the live mirror and player client-side.
  *
  * Fullscreen is ours, not theirs (verified 2026-10-16): the embedded player's
- * own fullscreen button calls requestFullscreen() from inside a doubly
- * nested cross-origin frame (ours -> their mirror -> their player), a request
- * Chrome treats per-origin and can prompt for or silently block - it failed
- * live even though the whole permission chain (our allow list, their
- * allowfullscreen, no Permissions-Policy headers) checks out at every level.
- * This screen instead fullscreens its own .player-shell from the top
- * document, which needs no permission delegation at all, so the control
- * works no matter how the source site re-wires its own embed.
+ * own fullscreen button calls requestFullscreen() from inside a nested
+ * cross-origin frame (ours -> their player or mirror chain), a request
+ * Chrome treats per-origin and can prompt for or silently block. This screen
+ * instead fullscreens its own .player-shell from the top document, which
+ * needs no permission delegation at all, so the control works no matter how
+ * the source site re-wires its own embed.
  *
- * Rotation resilience (2026-10-16): the embed's origin is never hardcoded -
- * useEntryOrigin resolves the live entry generation at runtime (see
- * src/api/source-sites.ts), and the ROUTE card link rides the same origin.
- * A mounted embed that never signals load within the watchdog window is
- * treated as a mid-session rotation: the origin is re-resolved from scratch
- * and the frame remounted once on the fresh origin; a second stall swaps the
- * frame for an explicit retry notice instead of spinning forever. Mirror
- * rotation inside their embed needs no handling here: their own page hands
- * itself off to the live mirror client-side, inside the frame.
+ * Rotation resilience (2026-10-16): no embedded origin is hardcoded -
+ * useEntryOrigin resolves the live entry generation and usePlayerHosts the
+ * live player hosts, both at runtime. A mounted embed that never signals
+ * load within the watchdog window is treated as a mid-session rotation:
+ * both are re-resolved from scratch and the frame remounted once; a second
+ * stall swaps the frame for an explicit retry notice instead of spinning
+ * forever. Player-host rotation inside the "page" mode needs no handling
+ * here: their own page embeds the live player host client-side.
  */
 
 /** How long the embed may stay silent after mounting before it counts as stalled. */
@@ -58,14 +77,97 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
   const [playing, setPlaying] = useState(false);
   const [embedReady, setEmbedReady] = useState(false);
 
-  // Rotation resilience: the embed origin comes from runtime resolution, and
-  // a stalled frame triggers a fresh re-resolution plus a remount (bumping
+  // Rotation resilience: the embedded origins come from runtime resolution,
+  // and a stalled frame triggers a fresh re-resolution plus a remount (bumping
   // the epoch) rather than leaving a dead frame on screen. Failures counts
   // stalls since the last explicit start/retry: 0 healthy, 1 remounting, 2
   // gave up and shows the retry notice.
   const { origin, reload: reloadOrigin } = useEntryOrigin();
+  const { hosts: playerHosts, reload: reloadPlayerHosts } = usePlayerHosts();
   const [embedEpoch, setEmbedEpoch] = useState(0);
   const [embedFailures, setEmbedFailures] = useState(0);
+
+  // Embed mode: their bare player page directly (default), or their full
+  // match page as the fallback. Both ride the runtime-resolved hosts. The
+  // direct player needs the route's language and match id plus the feed's
+  // numeric sport id to build mdata; without any of those the page mode is
+  // the only constructible option.
+  const route = parseMatchRoute(href);
+  const canPlayer = route !== null && match.sportId !== undefined;
+  const [mode, setMode] = useState<"player" | "page">(canPlayer ? "player" : "page");
+  const embedMode = canPlayer ? mode : "page";
+  const setEmbedMode = (next: "player" | "page") => {
+    setMode(next);
+    // A mode switch mid-play is a remount: it re-arms the load watchdog
+    // instead of leaving a half-navigated frame.
+    if (playing) {
+      setEmbedReady(false);
+      setEmbedEpoch((epoch) => epoch + 1);
+    }
+  };
+
+  // The verified direct-player URL for the current embed epoch, or null
+  // while the probe is still choosing (or the page mode is active). Keyed
+  // by epoch + match + sport so every remount re-probes, a match switch
+  // never replays the previous match's frame, and a background host-list
+  // refresh mid-play never restarts a working frame.
+  const [playerPick, setPlayerPick] = useState<{ key: string; url: string } | null>(null);
+  // Set when the probe itself gave up on the direct player and this screen
+  // fell back to the full page embed; cleared like fullscreenDenied.
+  const [playerNotice, setPlayerNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (playerNotice === null) return;
+    const timer = window.setTimeout(() => setPlayerNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [playerNotice]);
+
+  // Direct-player selection: probe each listed host's exact embed URL
+  // server-side (see pickPlayerUrl) and mount only the first one that
+  // provably serves the page. Candidate order rotates with the epoch so a
+  // remount does not retry the same dead host first.
+  useEffect(() => {
+    if (!playing || embedMode !== "player" || route === null || match.sportId === undefined) return;
+    const key = `${embedEpoch}:${route.lang}:${route.matchId}:${match.sportId}`;
+    if (playerPick !== null && playerPick.key === key) return;
+    let cancelled = false;
+    const source = { lang: route.lang, matchId: route.matchId, sportType: match.sportId };
+    const rotateBy = embedEpoch % Math.max(playerHosts.length, 1);
+    const candidates = [...playerHosts.slice(rotateBy), ...playerHosts.slice(0, rotateBy)];
+    void pickPlayerUrl(candidates, source).then((pick) => {
+      if (cancelled) return;
+      if (pick.kind === "embed") {
+        setPlayerPick({ key, url: pick.url });
+        return;
+      }
+      // Every listed host refused the embed or none answered: the direct
+      // player is done for now. Fall back to their own match page - which
+      // still hands itself off to the live player client-side - and say
+      // so, instead of mounting a frame that looks healthy while showing
+      // nothing.
+      setPlayerNotice(
+        pick.kind === "refused"
+          ? "The source refused the direct player - showing the full page embed instead"
+          : "No direct player host answered - showing the full page embed instead",
+      );
+      setMode("page");
+      setEmbedReady(false);
+      setEmbedEpoch((epoch) => epoch + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // playerHosts is read at pick time only: a mid-play list refresh must
+    // not restart a mounted frame, and every epoch bump re-reads the fresh
+    // list. playerPick is the guard that makes re-runs no-ops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, embedMode, embedEpoch, playerPick, route?.lang, route?.matchId, match.sportId]);
+
+  const playerPickUrl = embedMode === "player" ? (playerPick?.url ?? null) : null;
+  // The frame mounts only on verified ground in player mode; while the
+  // probe is choosing, the loading overlay stands in for it.
+  const embedMounted = embedMode === "page" || playerPickUrl !== null;
+  const embedSrc = playerPickUrl !== null ? playerPickUrl : sourceUrl(href, origin);
 
   // Fullscreen state mirrors document.fullscreenElement so the control stays
   // in sync even when the browser exits fullscreen on its own (Esc key).
@@ -105,13 +207,20 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
   };
 
   /**
-   * Remounts the embed frame on a freshly resolved origin. The reload must
-   * settle before the epoch bumps, otherwise the new frame would mount on the
-   * stale origin and never see the rotation.
+   * Remounts the embed frame on freshly resolved hosts. Both reloads must
+   * settle before the epoch bumps, otherwise the new frame would mount on a
+   * stale origin or player host and never see the rotation.
    */
   const remountEmbed = (fresh: boolean) => {
     setEmbedReady(false);
-    void reloadOrigin(fresh).finally(() => setEmbedEpoch((epoch) => epoch + 1));
+    const reloads: Promise<unknown>[] = [
+      // The page mode embeds the entry origin only, but reloading both costs
+      // one extra request and keeps the player list warm for a mode switch.
+      // Neither resolver throws by contract; the catches are hard guards.
+      reloadOrigin(fresh).catch(() => undefined),
+      reloadPlayerHosts(fresh).catch(() => undefined),
+    ];
+    void Promise.all(reloads).finally(() => setEmbedEpoch((epoch) => epoch + 1));
   };
 
   const retryEmbed = () => {
@@ -120,11 +229,15 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
   };
 
   // Watchdog: a mounted frame that never signals load within the window is
-  // treated as a dead or rotated origin. First stall re-resolves the origin
-  // from scratch and remounts once; a second stall stops retrying on its own
-  // and swaps the frame for the explicit retry notice.
+  // treated as a dead or rotated host. First stall re-resolves the entry
+  // origin and the player hosts from scratch and remounts once; a second
+  // stall stops retrying on its own and swaps the frame for the explicit
+  // retry notice.
   useEffect(() => {
     if (!playing || embedFailures >= 2 || embedReady) return;
+    // Nothing to watch yet in player mode: the probe is still choosing the
+    // host, and its own candidates carry the timeouts.
+    if (embedMode === "player" && playerPickUrl === null) return;
     const timer = window.setTimeout(() => {
       if (embedFailures === 0) {
         setEmbedFailures(1);
@@ -162,11 +275,19 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
             playing
               ? embedFailures >= 2
                 ? "The live source is not answering; retrying is available below the player"
-                : "The live player is embedded from the source site, on its currently resolved domain"
+                : embedMode === "player"
+                  ? "The source site's bare player page is embedded directly, on the first listed player host that provably serves it"
+                  : "The source site's full match page is embedded, on its currently resolved domain"
               : "This page plays no video - it is a local simulation"
           }
         >
-          {playing ? (embedFailures >= 2 ? "Source unreachable" : "Live embed") : "Simulated stream"}
+          {playing
+            ? embedFailures >= 2
+              ? "Source unreachable"
+              : embedMode === "player"
+                ? "Live player"
+                : "Live page embed"
+            : "Simulated stream"}
         </span>
       </header>
 
@@ -178,23 +299,57 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
       <div className="player-shell" ref={shellRef}>
         {playing && embedFailures < 2 ? (
           <>
-            <iframe
-              key={embedEpoch}
-              className="player-embed"
-              src={sourceUrl(href, origin)}
-              title="Live match player embedded from the source site"
-              sandbox="allow-scripts allow-same-origin"
-              allow="autoplay; fullscreen; encrypted-media"
-              referrerPolicy="no-referrer-when-downgrade"
-              onLoad={() => setEmbedReady(true)}
-            />
+            {embedMounted ? (
+              <iframe
+                key={`${embedMode}-${embedEpoch}`}
+                className="player-embed"
+                src={embedSrc}
+                title={
+                  embedMode === "player"
+                    ? "Live bare player embedded from the source site's player host, verified before mounting"
+                    : "Live match page embedded from the source site"
+                }
+                sandbox="allow-scripts allow-same-origin"
+                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                // Never no-referrer: the player page's gate 401s requests with
+                // no Referer, and the browser's default policy already sends
+                // this app's origin, which the gate was verified to accept.
+                referrerPolicy="no-referrer-when-downgrade"
+                onLoad={() => setEmbedReady(true)}
+              />
+            ) : null}
             {!embedReady ? (
               <div className="player-embed-loading" role="status">
                 <span className="player-note-dot" />
-                {embedFailures === 0 ? "Connecting to live source…" : "Reconnecting to a fresh live source…"}
+                {embedMode === "player" && !embedMounted
+                  ? "Verifying the live source…"
+                  : embedFailures === 0
+                    ? "Connecting to live source…"
+                    : "Reconnecting to a fresh live source…"}
               </div>
             ) : null}
             <div className="player-embed-bar">
+              <div className="player-embed-mode" role="group" aria-label="Embed mode">
+                <button
+                  className={embedMode === "player" ? "player-embed-mode-on" : undefined}
+                  onClick={() => setEmbedMode("player")}
+                  disabled={!canPlayer}
+                  title={
+                    canPlayer
+                      ? "Embed the source site's bare player page - no ads, full frame"
+                      : "Needs the feed's numeric match and sport ids for this match"
+                  }
+                >
+                  Player
+                </button>
+                <button
+                  className={embedMode === "page" ? "player-embed-mode-on" : undefined}
+                  onClick={() => setEmbedMode("page")}
+                  title="Embed the source site's full match page - the fallback if the bare player ever stops working"
+                >
+                  Page
+                </button>
+              </div>
               <button
                 className="player-embed-fullscreen"
                 onClick={toggleFullscreen}
@@ -241,6 +396,11 @@ export const StreamScreen = ({ match, href, onExit }: { match: Match; href: stri
             {fullscreenDenied ? (
               <div className="player-embed-denied" role="status">
                 Fullscreen was blocked by the browser
+              </div>
+            ) : null}
+            {playerNotice !== null ? (
+              <div className="player-embed-denied" role="status">
+                {playerNotice}
               </div>
             ) : null}
           </>

@@ -230,3 +230,147 @@ export const resolveApiHosts = async (fresh = false): Promise<readonly string[]>
 
 /** Drops the api-host cache so the next resolution re-reads the entry page. */
 export const resetApiHosts = (): void => clearCache(API_HOSTS_CACHE_KEY);
+
+/**
+ * Common-params path on any data host (verified 2026-10-16): answers the
+ * operator's runtime config as JSON, scrambled with a printable-ASCII
+ * rotation and sent with Access-Control-Allow-Origin: *, so a plain browser
+ * fetch reads it. Its `common:web:client` key carries the live list of bare
+ * player hosts (under `iframePlayerDomains`), which is what lets this app
+ * embed the player page directly instead of the ad-wrapped match page.
+ * A bare fetch with no Referer or Sec-Fetch headers gets an HTML bot stub,
+ * but a normal browser fetch always carries both, so no spoofing is needed.
+ */
+const PARAMS_PATH = "/api/common/params";
+
+/** Player hosts listed by the params API right now (verified 2026-10-16). */
+export const DEFAULT_PLAYER_HOSTS = [
+  "mimi01eo.***REMOVED***.cfd",
+  "tim01bp.***REMOVED***8utphnumber.cfd",
+  "morgan01cf.***REMOVED***587uclock.cfd",
+] as const;
+
+const PLAYER_HOSTS_CACHE_KEY = "scoreline:player-hosts";
+
+/**
+ * Unscrambles the params API's rotation: every code point in 33..126 moves
+ * forward by a shift within that 94-code-point window, everything else
+ * (newline, CJK, emoji) passes through (verified 2026-10-16: the ciphertext
+ * `]C3EGA=FD` decodes to `.***REMOVED***` at shift 47, whose direction is
+ * irrelevant because a 47-step rotation inside a 94-wide window is its own
+ * inverse). The shift itself is operator-chosen, so it is treated as
+ * rotating too: nothing here trusts 47 staying current.
+ */
+const rotatePrintable = (text: string, shift: number): string => {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    out +=
+      code !== undefined && code >= 33 && code <= 126
+        ? String.fromCharCode(((code - 33 + shift) % 94 + 94) % 94 + 33)
+        : ch;
+  }
+  return out;
+};
+
+/** Shifts to try, in order: the verified one, plain JSON, then everything. */
+const SHIFT_CANDIDATES: readonly number[] = [
+  47, // verified live 2026-10-16
+  0, // in case the scramble is dropped entirely
+  ...Array.from({ length: 94 }, (_, shift) => shift).filter((shift) => shift !== 47 && shift !== 0),
+];
+
+/** Key-matching for the player-host list, tolerant of naming drift. */
+const isPlayerDomainsKey = (key: string): boolean => /iframe[_-]?player[_-]?domains/i.test(key);
+
+/**
+ * Collects every player-domain entry from anywhere in the decoded params
+ * object. The operator files each brand's config under its own digit key
+ * (`snd`, `trd`, `foth`, ...) and nests some values as JSON strings one
+ * level deep, and which key belongs to which brand has already shifted once
+ * during observation - so nothing here keys off the brand layout. The whole
+ * tree is walked and every player host found anywhere is unioned; a
+ * re-shuffled params response keeps resolving as long as the player-domain
+ * key name survives. Depth is capped because the nested-JSON walk is
+ * recursive.
+ */
+const collectPlayerHosts = (node: unknown, into: string[], depth: number): void => {
+  if (depth > 4) return;
+  if (typeof node === "string") {
+    const first = node.charAt(0);
+    if (first !== "{" && first !== "[") return;
+    try {
+      collectPlayerHosts(JSON.parse(node), into, depth + 1);
+    } catch {
+      // An ordinary string that merely looks structured: nothing to take.
+    }
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) collectPlayerHosts(item, into, depth);
+    return;
+  }
+  if (node === null || typeof node !== "object") return;
+  for (const [key, value] of Object.entries(node)) {
+    if (isPlayerDomainsKey(key) && Array.isArray(value)) {
+      for (const host of value) if (typeof host === "string") into.push(host);
+    } else {
+      collectPlayerHosts(value, into, depth);
+    }
+  }
+};
+
+/**
+ * Decodes a params response into its player hosts without trusting the
+ * exact cipher: each candidate shift is applied, parsed, and only counts
+ * when the parse succeeds AND yields at least one player host. A wrong
+ * shift scrambles the JSON's structural characters too, so a wrong-shift
+ * parse is vanishingly unlikely - and requiring a host find on top of it
+ * makes a false positive harmless (it would simply find nothing and the
+ * next shift would be tried). Returns null when no shift decodes the
+ * response into any player host.
+ */
+const decodePlayerHosts = (text: string): string[] | null => {
+  for (const shift of SHIFT_CANDIDATES) {
+    let params: unknown;
+    try {
+      params = JSON.parse(rotatePrintable(text, shift));
+    } catch {
+      continue;
+    }
+    const found: string[] = [];
+    collectPlayerHosts(params, found, 0);
+    if (found.length > 0) return [...new Set(found)];
+  }
+  return null;
+};
+
+/**
+ * The live bare-player hosts, from the same data hosts the feed fails over
+ * across. Never throws: every path degrades to the last known list and
+ * finally to the verified defaults, so the player screen always has a host
+ * to try while the network is still resolving.
+ */
+export const resolvePlayerHosts = async (fresh = false): Promise<readonly string[]> => {
+  if (!fresh) {
+    const cached = readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, (age) => age < CACHE_TTL_MS);
+    if (cached !== null && cached.length > 0) return cached;
+  }
+  for (const apiHost of await resolveApiHosts(fresh)) {
+    try {
+      const response = await fetch(`https://${apiHost}${PARAMS_PATH}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Params answered ${response.status}.`);
+      const hosts = decodePlayerHosts(await response.text());
+      if (hosts === null) throw new Error("Params no longer decode to any player host.");
+      writeCache(PLAYER_HOSTS_CACHE_KEY, hosts);
+      return hosts;
+    } catch {
+      // Host dead, bot-stubbed, or the response shape changed: next host.
+    }
+  }
+  const stale = readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, () => true);
+  return stale !== null && stale.length > 0 ? stale : DEFAULT_PLAYER_HOSTS;
+};
+
+/** Drops the player-host cache so the next resolution re-reads params. */
+export const resetPlayerHosts = (): void => clearCache(PLAYER_HOSTS_CACHE_KEY);

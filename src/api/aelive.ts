@@ -1,4 +1,5 @@
 import type { Match, MatchStatus, Team } from "../domain/match";
+import { sportThumb } from "../domain/match";
 import { num, parseProto, sub, subs, text, texts, type ProtoField } from "../lib/protobuf";
 import { FEED_PATH, resetApiHosts, resolveApiHosts } from "./source-sites";
 
@@ -34,10 +35,11 @@ export const sportLabel = (sportId: number): string =>
     3: "Tennis",
     4: "Baseball",
     6: "Cricket",
-    7: "Sport 7",
-    // Identified 2026-10-16: sportType 8 carries "Coppa del Mondo" (Rugby
-    // World Cup) and the NZ "NPC" playoffs. Curling rides under 11 with the NHL
-    // in the feed's ice-sports bucket.
+    // Identified 2026-10-16 by probing the individual feeds: sportType 7 is
+    // the motorsport bucket (WSBK, Grand Prix, RallyRACC, Nascar) and 15 is
+    // the cycling bucket (UCI track, Eneco Tour, DAZN stage races). Curling
+    // rides under 11 with the feed's ice-sports bucket. 17-19 answer empty.
+    7: "Motorsport",
     8: "Rugby",
     9: "American Football",
     10: "Aussie Rules",
@@ -45,7 +47,7 @@ export const sportLabel = (sportId: number): string =>
     12: "Badminton",
     13: "Volleyball",
     14: "Combat Sports",
-    15: "Sport 15",
+    15: "Cycling",
     16: "Handball",
     17: "Sport 17",
     18: "Sport 18",
@@ -204,7 +206,7 @@ const parseMatch = (message: ProtoField[], oddsById: Map<string, string[]>): Mat
       venue: null,
       country,
       round: null,
-      thumb: null,
+      thumb: sportThumb(sportId),
       sportId,
       slugs,
       odds: oddsById.get(String(id)) ?? undefined,
@@ -234,7 +236,7 @@ const parseMatch = (message: ProtoField[], oddsById: Map<string, string[]>): Mat
     venue: null,
     country,
     round: null,
-    thumb: null,
+    thumb: sportThumb(sportId),
     sportId,
     slugs,
     odds: oddsById.get(String(id)) ?? undefined,
