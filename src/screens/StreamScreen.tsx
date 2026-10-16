@@ -799,7 +799,21 @@ export const StreamScreen = ({
               {match.country ? <span className="hero-meta-dim">{match.country}</span> : null}
             </div>
           </div>
-          <div className="watch-toolbar" role="toolbar" aria-label="Player controls">
+          {/*
+              The toolbar floats (see .watch-toolbar in watch.css): it is
+              fixed to the bottom, centered over the layer, always in reach
+              without scrolling. The spring ride-in runs once on mount; the
+              transform animations below belong to motion, which is why the
+              CSS centers with margins instead of a translate. */
+            }
+            <motion.div
+              className="watch-toolbar"
+              role="toolbar"
+              aria-label="Player controls"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", bounce: 0.16, duration: 0.55, delay: layoutId ? 0.22 : 0.05 }}
+            >
             {playing ? (
               embedControls
             ) : (
@@ -819,7 +833,7 @@ export const StreamScreen = ({
                 </button>
               </>
             )}
-          </div>
+          </motion.div>
         </div>
 
         <dl className="stream-meta">
