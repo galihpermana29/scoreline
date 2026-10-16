@@ -106,24 +106,60 @@ const EMBED_LOAD_TIMEOUT_MS = 15_000;
  * rounds, which kills that scroll path entirely - verified: at 10000 the big
  * ~200px displacement is gone.
  *
- * What starvation cannot fix: once framed, their layout reflows over the
- * first minute and the video container itself slides up the page (top edge
- * measured 80px at mount, ~52px at 26s, and past the top edge once their
- * banners settled - the worst measured leak was a ~110px band of their
- * share-strip and banners inside the crop; the anchor is a moving target no
- * constant can track). Showing that leak is the default: it is their ad
- * inventory, the visitor consented to it the moment they opened a mirrored
- * pirate stream, and silently blacking out chunks of the picture is not our
- * call to make. The optional "Hide ads" toolbar toggle opts into the
- * PAGE_EMBED_MASK overlays - plain black bars, top and bottom, sized to the
- * worst measured drift so the leak never renders in that mode - at the
- * price of cropping the same strips off the video itself while their
- * layout sits still. The choice is remembered per browser.
+ * What starvation alone could not fix, and the kick now does (verified live
+ * 2026-10-16 evening): a fresh mount could land with the crop transform
+ * provably absent - the frame stayed shell-sized and showed their whole
+ * page (video at the top, URL strip and banners below), while an applied
+ * transform would instead show the whole document squashed to a sliver, so
+ * the style itself was missing, not merely misplaced. A manual Zoom
+ * off/on round trip repaired it. The screen now runs that repair itself
+ * (PAGE_EMBED_KICK_DELAY_MS below): the frame mounts shell-sized and
+ * jumps to the crop geometry once its load events go quiet, behind an
+ * opaque cover that doubles as the reveal. Verified live 2026-10-16 late
+ * evening: a cold reload lands the centered video-only crop with no
+ * toolbar interaction, and holds it.
+ *
+ * Residual drift (2026-10-16 late evening, re-measured): even after the
+ * kick the framed layout is not frozen - within ~2 minutes their scripts
+ * slide the video anchor ~50px up the page (video-space), so the video's
+ * own chrome row settles at ~88% of the crop instead of at its bottom
+ * edge, and their URL strip plus banner leak into the crop's bottom band.
+ * The rest of their floating ad overlays sit inside the stream area where
+ * no crop can reach them. No constant can track a moving anchor, so the
+ * app does not try: the leak is theirs to show by default (the visitor
+ * consented to the source's ads the moment they opened a mirrored
+ * stream), and the optional "Hide ads" toolbar toggle opts into the
+ * PAGE_EMBED_MASK overlays - plain black bars over the drift band - at
+ * the price of cropping those strips off the picture too. The choice is
+ * remembered per browser.
  */
 const PAGE_EMBED_BASE = { width: 750, height: 10000 } as const;
 const PAGE_EMBED_VIDEO = { x: 0, y: 80, w: 750, h: (750 * 9) / 16 } as const;
-/** Opt-in black bars covering the worst measured anchor drift; in video-box px. */
-const PAGE_EMBED_MASK = { top: 16, bottom: 110 } as const;
+/**
+ * Opt-in black bars over the post-kick drift band. In video-box px.
+ * Bottom 40 (user-tuned 2026-10-16 late evening, from a leak-sized 48
+ * then a too-thin 8): covers most of the drifted URL strip that settles
+ * into the crop's bottom band; the leak has measured ~50 video-box px,
+ * so a small sliver can remain when their inventory stacks taller that
+ * day - re-measure and confirm with the user before resizing. Top 16:
+ * shaves the floating top ad strip's top edge.
+ */
+const PAGE_EMBED_MASK = { top: 16, bottom: 40 } as const;
+/**
+ * The zoom kick: a fresh page-embed mount could land with the crop
+ * transform provably absent - the frame stayed shell-sized showing their
+ * whole page, where an applied transform would show the document squashed
+ * to a sliver (verified live 2026-10-16 evening; the manual Zoom off/on
+ * round trip repaired it every time). Root cause was inconclusive at the
+ * time, so the kick makes the sequence independent of it: while the crop
+ * is wanted, the frame mounts shell-sized, and on each of its load events
+ * (the entry -> mirror handoff hops documents) it collapses back to shell
+ * size and re-arms; the crop lands this many ms after the latest load,
+ * behind an opaque cover that hides the whole dance and doubles as the
+ * reveal. A toolbar zoom flip pre-completes the kick, so the crop snaps
+ * on the click instead of re-running the dance.
+ */
+const PAGE_EMBED_KICK_DELAY_MS = 900;
 const PAGE_ZOOM_KEY = "scoreline:page-zoom";
 const HIDE_ADS_KEY = "scoreline:hide-ads";
 const kickHint = (match: Match): string =>
@@ -295,7 +331,39 @@ export const StreamScreen = ({
       return true;
     }
   });
-  const toggleZoom = () =>
+  // The zoom kick (see PAGE_EMBED_KICK_DELAY_MS): while the crop is wanted,
+  // the frame mounts shell-sized and jumps to the crop geometry once its
+  // load events go quiet - the automatic version of the toolbar's Zoom
+  // off/on round trip, which is what actually repairs their layout (the
+  // frame's own viewport resize reaches their scripts; the transform does
+  // not). Covered until the kick has landed
+  const zoomCropWanted = zoom && embedMode === "page" && playing && embedFailures < 2;
+  const [zoomKickDone, setZoomKickDone] = useState(false);
+  const [embedLoads, setEmbedLoads] = useState(0);
+  useEffect(() => {
+    // A different frame mounts (epoch bump, mode switch, stop/play cycle):
+    // fresh load counts, cover back up, kick re-armed.
+    setEmbedLoads(0);
+    setZoomKickDone(false);
+  }, [embedEpoch, embedMode, playing]);
+  useEffect(() => {
+    if (embedLoads === 0) return;
+    // A load event means a fresh document took over the frame (the
+    // entry -> mirror handoff hops documents), and whatever crop state
+    // it inherited was addressed to its predecessor - a document that
+    // mounts straight into the 750x10000 crop geometry never lays its
+    // video out correctly (verified live 2026-10-16 evening). So every
+    // load collapses the frame back to shell size - itself a resize the
+    // new document registers - and the kick re-arms: the crop is applied
+    // a beat after the LATEST load, when the document that will actually
+    // be cropped has settled. Only the last document in the chain ends
+    // up cropped, and by resize rather than mount geometry, which is
+    // the exact repair the toolbar's Zoom off/on round trip performs.
+    setZoomKickDone(false);
+    const timer = window.setTimeout(() => setZoomKickDone(true), PAGE_EMBED_KICK_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [embedLoads]);
+  const toggleZoom = () => {
     setZoom((current) => {
       try {
         localStorage.setItem(PAGE_ZOOM_KEY, current ? "0" : "1");
@@ -304,6 +372,10 @@ export const StreamScreen = ({
       }
       return !current;
     });
+    // Turning the crop back on by hand is itself a resize kick - the frame
+    // jumps straight to its crop geometry with no cover in the way.
+    setZoomKickDone(true);
+  };
 
   // The opt-in counterpart to the crop: by default the source's ads are
   // shown as-is (the visitor consented to them by watching this embed at
@@ -353,8 +425,10 @@ export const StreamScreen = ({
   // The page-embed frame style: at base size, scaled about the measured
   // video box so it covers the whole shell (cover, never stretch: the
   // shell is 16:9 by design, so the crop is pixel-exact in practice).
+  // Undefined until the zoom kick has landed, which is what carries the
+  // frame from its shell-sized mount geometry to the crop geometry.
   const pageZoomStyle: CSSProperties | undefined = (() => {
-    if (!zoom || embedMode !== "page" || shellBox === null) return undefined;
+    if (!zoomCropWanted || !zoomKickDone || shellBox === null) return undefined;
     const { w, h } = shellBox;
     const scale = Math.max(w / PAGE_EMBED_VIDEO.w, h / PAGE_EMBED_VIDEO.h);
     const tx = w / 2 - (PAGE_EMBED_VIDEO.x + PAGE_EMBED_VIDEO.w / 2) * scale;
@@ -564,15 +638,24 @@ export const StreamScreen = ({
                   // we are not on it), and the page embed passes because its
                   // nested player carries the source's own domain instead.
                   referrerPolicy="no-referrer-when-downgrade"
-                  onLoad={() => setEmbedReady(true)}
+                  onLoad={() => {
+                    setEmbedLoads((count) => count + 1);
+                    setEmbedReady(true);
+                  }}
                 />
+              ) : null}
+              {/* The kick cover: hides the shell-sized mount geometry and the
+                  relayout tail until the crop has snapped in, then fades -
+                  so the first thing the visitor sees is the centered video,
+                  not the frame's plain page. */}
+              {embedMode === "page" && zoom ? (
+                <div aria-hidden className={`player-embed-kick-cover${zoomKickDone ? " is-done" : ""}`} />
               ) : null}
               {pageZoomStyle !== undefined && embedMounted && hideAds ? (
                 <>
-                  {/* Opt-in drift covers: their framed layout reflows the
-                      video anchor up the page over the first minute,
-                      leaking the share-strip and banners into the crop;
-                      sized to the worst measured drift band (see
+                  {/* Opt-in drift covers: their framed layout can still
+                      reflow the video anchor inside the crop after their
+                      banners settle; sized to the residual drift band (see
                       PAGE_EMBED_MASK). Off by default - most visitors see
                       the source's ads rather than a cropped picture. */}
                   <div

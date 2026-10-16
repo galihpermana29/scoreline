@@ -130,6 +130,21 @@
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
 }
 
+/* Edge-to-edge: from the tablet tier up, the fit-without-scroll cap above
+   is traded for width - the shell spans the whole watch layer (sidebar
+   edge to viewport edge, inside the gutter), same 16:9. Everything inside
+   is ratio-driven (the page-embed crop, masks, kick), so it simply scales
+   up; the trade is a bit of scroll under the frame on short displays
+   (worst case ~90px on 1366x768 laptops), which is the price of "same
+   ratio" at full width. On narrow/portrait screens the cap never bound
+   anyway (full width is already the smaller dimension), so this rule
+   only ever widens the shell. Phones keep their own full-width block. */
+@media (min-width: 740px) {
+  .player-shell {
+    width: 100%;
+  }
+}
+
 .watch-body {
   max-width: 1180px;
   margin: 0 auto;
@@ -327,6 +342,24 @@
   pointer-events: none;
 }
 
+/* The zoom kick's cover: opaque while the frame sits in its shell-sized
+   mount geometry, then fading out as the crop snaps in, so the mount
+   flash and the resize relayout tail never render to the visitor. Its
+   fade doubles as the reveal: the centered video appears through it. */
+.player-embed-kick-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #0a0a0c;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 500ms ease 150ms;
+}
+
+.player-embed-kick-cover.is-done {
+  opacity: 0;
+}
+
 /* Big centered play affordance on the simulated shell: mounts the embed.
    z-index lifts it above the decorative score overlay that follows it in
    DOM order and would otherwise swallow the click. */
@@ -380,6 +413,7 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+  z-index: 4;
   display: inline-flex;
   align-items: center;
   gap: 8px;
