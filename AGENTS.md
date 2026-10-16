@@ -40,11 +40,10 @@ The watch screen (`src/screens/StreamScreen.tsx`) has two embed modes.
   The URL is built in `src/api/player.ts`: `mdata` is just the base64 of `{matchId}_{sportType}`, constructible straight from the feed's own match data.
 - **"page" (fallback)**: embeds their full match page, which still hands itself off to the live mirror and player client-side, whatever they change.
 
-The player gate (verified 2026-10-16) is **Referer-based**: the page 401s any request with no Referer and accepts any Referer at all.
-A browser embedding the URL as an iframe satisfies it natively, so the frame must never set `referrerpolicy="no-referrer"`.
-There is no X-Frame-Options and no frame-ancestors, so any origin may frame it.
-One gate fact changed between observations: on 2026-10-16 morning a Referer alone passed even without `Sec-Fetch-Dest: iframe`, while the previous day's observation had `Sec-Fetch-Dest` mattering.
-Treat the exact header mix as unstable; always send the full iframe-like set when probing.
+The player gate changed shape during 2026-10-16 (morning -> afternoon).
+By afternoon the page's own JS checks `document.referrer`'s domain against the params API's `playSiteDomains` allowlist (the operator's mirror fronts; `localhost` is in the list, so dev sees the clean player) and renders a code-100/icode-201 error stub for foreign embedders; a referer-less load gets 403 from their edge WAF.
+The HTML answers 200 to a server-side fetch from any origin, so the probe pipeline cannot see this refusal - the direct player only works from allowlisted origins, and production embeds default to the "page" mode (its nested player carries their own domain as Referer and passes).
+An expired/unknown mdata shows the same stub family client-side - a garbage mdata still answers 200 (verified twice).
 
 ## The probe pipeline (how the app adapts on change)
 
@@ -159,7 +158,8 @@ The full log of what was true when; re-verify before relying on any of it.
 - 2026-10-16: old-generation entry hosts 301 to the current generation without ACAO - only walkable server-side.
 - 2026-10-16: feed path `/sfver%3Ctoken%3E/api/match/live` - the token placeholder is ignored by the backend, only the host moves.
 - 2026-10-16: params cipher shift 47, key `iframePlayerDomains` under brand-digit keys (`snd`, `trd`, `foth`, ...), sometimes nested one level deep as JSON strings.
-- 2026-10-16: player gate Referer-based (401 without Referer, 200 with any); a Referer alone also passed on this date; no X-Frame-Options, no frame-ancestors.
+- 2026-10-16 (morning): player gate Referer-based (401 without Referer, 200 with any Referer); no X-Frame-Options, no frame-ancestors.
+- 2026-10-16 (afternoon): the gate moved into their player JS - `document.referrer` domain must be in the params `playSiteDomains` list (localhost included), referer-less loads get 403 from the edge; production embeds default to page mode. Params also expose `playSiteDomainsToB` (blocked list) and `blackDomains`.
 - 2026-10-16: mdata = base64 of `{matchId}_{sportType}` - verified for football `4513837_1` and basketball `2244615_2`.
 - 2026-10-16: a garbage mdata still answers 200 (player parses it client-side) - mdata drift is externally undetectable.
 - 2026-10-16: feed sport ids: 1 football, 2 basketball, 3 tennis, 4 baseball, 6 cricket, 7 Motorsport, 8 rugby, 9 american football, 10 aussie rules, 11 ice hockey (+ curling), 12 badminton, 13 volleyball, 14 combat sports, 15 Cycling, 16 handball, 90 horse racing.

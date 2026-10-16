@@ -23,26 +23,30 @@ import { downloadCalendarEvent } from "../lib/calendar";
  *
  * Two embed modes, switchable on the toolbar (2026-10-16):
  *
- * - "player" (default) embeds their dedicated bare player page directly,
- *   skipping the match page and its banner ads entirely - the player gets
- *   every pixel of the frame. The URL is constructed here (see
- *   src/api/player.ts): mdata is the base64 of {matchId}_{sportType}, and
- *   the host list comes live from their params API (see
- *   src/api/source-sites.ts). Before mounting, each candidate URL is probed
- *   server-side exactly as the iframe will request it (see src/api/probe.ts)
- *   and the first host that provably serves the page is the one embedded -
- *   a cross-origin iframe fires its load event for a 401 text page as
- *   happily as for the real player, so without the probe a tightened gate or
- *   a dead host would look exactly like a healthy embed. When every listed
- *   host refuses or none answers, this mode falls back to their own match
- *   page on its own, which still hands itself off to the live player
- *   client-side, and says so instead of showing a blank frame. The player
- *   page's gate was verified to accept any Referer as long as the load is a
- *   real iframe load, which a browser satisfies natively; the frame
- *   therefore never sets a no-referrer policy.
- * - "page" embeds the full match page as before, kept as the fallback for
- *   the day the direct player's gate or layout changes - their own page
- *   still hands itself off to the live mirror and player client-side.
+ * - "page" (default) embeds the full match page, which still hands itself
+ *   off to the live mirror and player client-side. Their player page runs a
+ *   client-side Referer check: document.referrer's domain must be in the
+ *   params API's `playSiteDomains` allowlist (the operator's own mirror
+ *   fronts; "localhost" is in it, so dev sees the clean player), and a
+ *   referer-less load gets 403 from their edge. A foreign origin like a
+ *   vercel.app deployment can never satisfy that list, so the full page -
+ *   whose nested player iframe carries their own domain as the Referer - is
+ *   the only embed that works everywhere.
+ * - "player" embeds their dedicated bare player page directly, skipping the
+ *   match page and its banner ads entirely - the player gets every pixel of
+ *   the frame. The URL is constructed here (see src/api/player.ts): mdata is
+ *   the base64 of {matchId}_{sportType}, and the host list comes live from
+ *   their params API (see src/api/source-sites.ts). Before mounting, each
+ *   candidate URL is probed server-side exactly as the iframe will request
+ *   it (see src/api/probe.ts) and the first host that provably serves the
+ *   page is the one embedded - a cross-origin iframe fires its load event
+ *   for a 401 text page as happily as for the real player, so without the
+ *   probe a tightened gate or a dead host would look exactly like a healthy
+ *   embed. Note the probe cannot see the Referer allowlist: the page answers
+ *   200 to a server-side fetch from any origin and the refusal happens in
+ *   the player's own JS. When every listed host refuses or none answers,
+ *   this mode falls back to their own match page on its own and says so
+ *   instead of showing a blank frame.
  *
  * Fullscreen is ours, not theirs (verified 2026-10-16): the embedded player's
  * own fullscreen button calls requestFullscreen() from inside a nested
@@ -119,7 +123,7 @@ export const StreamScreen = ({
   // the only constructible option.
   const route = parseMatchRoute(href);
   const canPlayer = route !== null && match.sportId !== undefined;
-  const [mode, setMode] = useState<"player" | "page">(canPlayer ? "player" : "page");
+  const [mode, setMode] = useState<"player" | "page">("page");
   const embedMode = canPlayer ? mode : "page";
   const setEmbedMode = (next: "player" | "page") => {
     setMode(next);
