@@ -42,7 +42,7 @@ The watch screen (`src/screens/StreamScreen.tsx`) has two embed modes.
 
 The player gate changed shape during 2026-10-16 (morning -> afternoon).
 By afternoon the page's own JS checks `document.referrer`'s domain against the params API's `playSiteDomains` allowlist (the operator's mirror fronts; `localhost` is in the list, so dev sees the clean player) and renders a code-100/icode-201 error stub for foreign embedders; a referer-less load gets 403 from their edge WAF.
-The HTML answers 200 to a server-side fetch from any origin, so the probe pipeline cannot see this refusal - the direct player only works from allowlisted origins, and production embeds default to the "page" mode (its nested player carries their own domain as Referer and passes).
+The HTML answers 200 to a server-side fetch from any origin, so the probe pipeline cannot see this refusal - the direct player only works from allowlisted origins. The app reads `playSiteDomains` from the same params decode as the player hosts (cache key `scoreline:play-site-domains`) and hides the direct-player toggle when its own hostname is not allowlisted; production embeds default to the "page" mode (its nested player carries their own domain as Referer and passes).
 An expired/unknown mdata shows the same stub family client-side - a garbage mdata still answers 200 (verified twice).
 
 ## The probe pipeline (how the app adapts on change)

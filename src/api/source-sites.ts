@@ -112,6 +112,14 @@ export const cachedEntryOrigin = (): string | null => readCache<string>(ENTRY_CA
 export const cachedPlayerHosts = (): readonly string[] | null =>
   readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, (age) => age < CACHE_TTL_MS);
 
+/**
+ * The cached play-site allowlist if still fresh, null when unknown. Written
+ * by the same params decode that resolves the player hosts, so anywhere the
+ * player list is being kept warm this list is too.
+ */
+export const cachedPlaySiteDomains = (): readonly string[] | null =>
+  readCache<string[]>(PLAY_SITE_CACHE_KEY, (age) => age < CACHE_TTL_MS);
+
 const staleEntryOrigin = (): string | null => readCache<string>(ENTRY_CACHE_KEY, () => true);
 
 /**
@@ -246,6 +254,8 @@ export const resetApiHosts = (): void => clearCache(API_HOSTS_CACHE_KEY);
 const PARAMS_PATH = "/api/common/params";
 
 const PLAYER_HOSTS_CACHE_KEY = "scoreline:player-hosts";
+/** Same TTL and lifecycle as the player hosts; written by the same decode. */
+const PLAY_SITE_CACHE_KEY = "scoreline:play-site-domains";
 
 /**
  * Unscrambles the params API's rotation: every code point in 33..126 moves
@@ -279,53 +289,65 @@ const SHIFT_CANDIDATES: readonly number[] = [
 const isPlayerDomainsKey = (key: string): boolean => /iframe[_-]?player[_-]?domains/i.test(key);
 
 /**
- * Collects every player-domain entry from anywhere in the decoded params
- * object. The operator files each brand's config under its own digit key
- * (`snd`, `trd`, `foth`, ...) and nests some values as JSON strings one
- * level deep, and which key belongs to which brand has already shifted once
- * during observation - so nothing here keys off the brand layout. The whole
- * tree is walked and every player host found anywhere is unioned; a
- * re-shuffled params response keeps resolving as long as the player-domain
- * key name survives. Depth is capped because the nested-JSON walk is
- * recursive.
+ * Key-matching for the player's embed allowlist. The player page's own JS
+ * checks its referrer's domain against exactly this list (verified live
+ * 2026-10-16 by reading their bundle). The `playSiteDomainsToB` sibling is a
+ * separate blocked list and must NOT match here, hence the anchored end.
  */
-const collectPlayerHosts = (node: unknown, into: string[], depth: number): void => {
+const isPlaySiteDomainsKey = (key: string): boolean => /^play[_-]?site[_-]?domains$/i.test(key);
+
+/**
+ * Collects every player-domain and play-site-domain entry from anywhere in
+ * the decoded params object. The operator files each brand's config under its
+ * own digit key (`snd`, `trd`, `foth`, ...) and nests some values as JSON
+ * strings one level deep, and which key belongs to which brand has already
+ * shifted once during observation - so nothing here keys off the brand
+ * layout. The whole tree is walked and every domain found anywhere is
+ * unioned; a re-shuffled params response keeps resolving as long as the key
+ * names survive. Depth is capped because the nested-JSON walk is recursive.
+ */
+type DomainLists = { playerHosts: string[]; playSiteDomains: string[] };
+
+const collectDomainLists = (node: unknown, into: DomainLists, depth: number): void => {
   if (depth > 4) return;
   if (typeof node === "string") {
     const first = node.charAt(0);
     if (first !== "{" && first !== "[") return;
     try {
-      collectPlayerHosts(JSON.parse(node), into, depth + 1);
+      collectDomainLists(JSON.parse(node), into, depth + 1);
     } catch {
       // An ordinary string that merely looks structured: nothing to take.
     }
     return;
   }
   if (Array.isArray(node)) {
-    for (const item of node) collectPlayerHosts(item, into, depth);
+    for (const item of node) collectDomainLists(item, into, depth);
     return;
   }
   if (node === null || typeof node !== "object") return;
   for (const [key, value] of Object.entries(node)) {
     if (isPlayerDomainsKey(key) && Array.isArray(value)) {
-      for (const host of value) if (typeof host === "string") into.push(host);
+      for (const host of value) if (typeof host === "string") into.playerHosts.push(host);
+    } else if (isPlaySiteDomainsKey(key) && Array.isArray(value)) {
+      for (const host of value) if (typeof host === "string") into.playSiteDomains.push(host);
     } else {
-      collectPlayerHosts(value, into, depth);
+      collectDomainLists(value, into, depth);
     }
   }
 };
 
 /**
- * Decodes a params response into its player hosts without trusting the
- * exact cipher: each candidate shift is applied, parsed, and only counts
- * when the parse succeeds AND yields at least one player host. A wrong
- * shift scrambles the JSON's structural characters too, so a wrong-shift
- * parse is vanishingly unlikely - and requiring a host find on top of it
- * makes a false positive harmless (it would simply find nothing and the
- * next shift would be tried). Returns null when no shift decodes the
- * response into any player host.
+ * Decodes a params response into its domain lists without trusting the exact
+ * cipher: each candidate shift is applied, parsed, and only counts when the
+ * parse succeeds AND yields at least one player host. A wrong shift scrambles
+ * the JSON's structural characters too, so a wrong-shift parse is vanishingly
+ * unlikely - and requiring a host find on top of it makes a false positive
+ * harmless (it would simply find nothing and the next shift would be tried).
+ * Returns null when no shift decodes the response into any player host. The
+ * play-site allowlist may legitimately come back empty (the key moved); the
+ * caller keeps the cached value then, treating the answer as unknown.
  */
-const decodePlayerHosts = (text: string): string[] | null => {
+const decodeDomainLists = (text: string): DomainLists | null => {
   for (const shift of SHIFT_CANDIDATES) {
     let params: unknown;
     try {
@@ -333,9 +355,14 @@ const decodePlayerHosts = (text: string): string[] | null => {
     } catch {
       continue;
     }
-    const found: string[] = [];
-    collectPlayerHosts(params, found, 0);
-    if (found.length > 0) return [...new Set(found)];
+    const found: DomainLists = { playerHosts: [], playSiteDomains: [] };
+    collectDomainLists(params, found, 0);
+    if (found.playerHosts.length > 0) {
+      return {
+        playerHosts: [...new Set(found.playerHosts)],
+        playSiteDomains: [...new Set(found.playSiteDomains)],
+      };
+    }
   }
   return null;
 };
@@ -356,10 +383,11 @@ export const resolvePlayerHosts = async (fresh = false): Promise<readonly string
     try {
       const response = await fetch(`https://${apiHost}${PARAMS_PATH}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`Params answered ${response.status}.`);
-      const hosts = decodePlayerHosts(await response.text());
-      if (hosts === null) throw new Error("Params no longer decode to any player host.");
-      writeCache(PLAYER_HOSTS_CACHE_KEY, hosts);
-      return hosts;
+      const lists = decodeDomainLists(await response.text());
+      if (lists === null) throw new Error("Params no longer decode to any player host.");
+      writeCache(PLAYER_HOSTS_CACHE_KEY, lists.playerHosts);
+      writeCache(PLAY_SITE_CACHE_KEY, lists.playSiteDomains);
+      return lists.playerHosts;
     } catch {
       // Host dead, bot-stubbed, or the response shape changed: next host.
     }
@@ -371,3 +399,19 @@ export const resolvePlayerHosts = async (fresh = false): Promise<readonly string
 
 /** Drops the player-host cache so the next resolution re-reads params. */
 export const resetPlayerHosts = (): void => clearCache(PLAYER_HOSTS_CACHE_KEY);
+
+/**
+ * Whether the player page's own JS would accept an embed framed by this
+ * hostname: their check compares the referrer's domain against the params
+ * `playSiteDomains` list (their mirror fronts; `localhost` is in it, so dev
+ * passes), exact or one level under an entry (their site is served on
+ * subdomains like www.*). An allowlist that is unknown (null elsewhere) is
+ * treated as accepting - absence of evidence is not refusal - because the
+ * probe cannot see this gate anyway and the watchdog remains as backstop.
+ */
+export const isEmbedOriginAllowlisted = (domains: readonly string[], hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  return domains.some(
+    (domain) => domain !== "" && (host === domain.toLowerCase() || host.endsWith(`.${domain.toLowerCase()}`)),
+  );
+};

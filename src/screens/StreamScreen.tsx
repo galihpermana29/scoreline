@@ -7,6 +7,7 @@ import { MORPH_SPRING, MatchCard, Shelf, StatusBadge, kickoffLabel, type OpenMat
 import { Icon } from "../components/icons";
 import { Crest, Notice } from "../components/ui";
 import { parseMatchRoute, sourceUrl } from "../lib/route";
+import { cachedPlaySiteDomains, isEmbedOriginAllowlisted } from "../api/source-sites";
 import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
@@ -46,7 +47,10 @@ import { downloadCalendarEvent } from "../lib/calendar";
  *   200 to a server-side fetch from any origin and the refusal happens in
  *   the player's own JS. When every listed host refuses or none answers,
  *   this mode falls back to their own match page on its own and says so
- *   instead of showing a blank frame.
+ *   instead of showing a blank frame. The toggle is only offered when the
+ *   params allowlist (playSiteDomains) accepts this app's own hostname - dev
+ *   is allowlisted, a production deployment is not, and there the page mode
+ *   is the only embed shown.
  *
  * Fullscreen is ours, not theirs (verified 2026-10-16): the embedded player's
  * own fullscreen button calls requestFullscreen() from inside a nested
@@ -121,8 +125,22 @@ export const StreamScreen = ({
   // direct player needs the route's language and match id plus the feed's
   // numeric sport id to build mdata; without any of those the page mode is
   // the only constructible option.
+  // The play-site allowlist rides the same params decode as the player
+  // hosts: the source's player page checks its referrer's domain against it
+  // (see source-sites.ts), so the direct-player toggle only exists where it
+  // can actually work. Unknown (null) is treated as allowed; the value is
+  // re-read whenever the host list refreshes since one decode writes both.
+  const [playSiteDomains, setPlaySiteDomains] = useState<readonly string[] | null>(() => cachedPlaySiteDomains());
+  useEffect(() => {
+    setPlaySiteDomains(cachedPlaySiteDomains());
+    // playerHosts changes exactly when a fresh decode has been cached.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerHosts]);
+  const directPlayerAllowed =
+    playSiteDomains === null || isEmbedOriginAllowlisted(playSiteDomains, window.location.hostname);
+
   const route = parseMatchRoute(href);
-  const canPlayer = route !== null && match.sportId !== undefined;
+  const canPlayer = route !== null && match.sportId !== undefined && directPlayerAllowed;
   const [mode, setMode] = useState<"player" | "page">("page");
   const embedMode = canPlayer ? mode : "page";
   const setEmbedMode = (next: "player" | "page") => {
@@ -304,10 +322,13 @@ export const StreamScreen = ({
           className={embedMode === "player" ? "player-embed-mode-on" : undefined}
           onClick={() => setEmbedMode("player")}
           disabled={!canPlayer}
+          hidden={!directPlayerAllowed}
           title={
-            canPlayer
-              ? "Embed the source site's bare player page - no ads, full frame"
-              : "Needs the feed's numeric match and sport ids for this match"
+            directPlayerAllowed
+              ? canPlayer
+                ? "Embed the source site's bare player page - no ads, full frame"
+                : "Needs the feed's numeric match and sport ids for this match"
+              : "Not available: the source's player only accepts embeds from its own allowlisted domains"
           }
         >
           Player
@@ -375,9 +396,11 @@ export const StreamScreen = ({
                   }
                   sandbox="allow-scripts allow-same-origin"
                   allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                  // Never no-referrer: the player page's gate 401s requests with
-                  // no Referer, and the browser's default policy already sends
-                  // this app's origin, which the gate was verified to accept.
+                  // Default policy sends our origin as Referer. The source's
+                  // player JS allowlists referrer domains (params
+                  // playSiteDomains; the direct-player toggle is hidden when
+                  // we are not on it), and the page embed passes because its
+                  // nested player carries the source's own domain instead.
                   referrerPolicy="no-referrer-when-downgrade"
                   onLoad={() => setEmbedReady(true)}
                 />
