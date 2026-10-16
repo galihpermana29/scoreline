@@ -336,7 +336,9 @@
   overflow: hidden;
 }
 
-/* Appearance row: pinned above the brand, same geometry as a nav row. */
+/* Rows pinned above the brand: the TV-friendly refresh (page reload is
+   awkward from a TV's remote) and the appearance switch. Same geometry
+   as a nav row. */
 .sidebar-bottom {
   margin-top: auto;
   padding-top: 18px;

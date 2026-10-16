@@ -226,6 +226,17 @@ export const Sidebar = ({
       </LayoutGroup>
 
       <div className="sidebar-bottom">
+        <button
+          className="nav-item"
+          aria-label="Refresh"
+          title="Reload the app (feed, host lookups and the stream all start clean)"
+          onClick={() => window.location.reload()}
+        >
+          <span className="nav-icon">
+            <Icon name="refresh" size={20} />
+          </span>
+          <span className="nav-label">Refresh</span>
+        </button>
         <ThemeToggle variant="row" />
       </div>
       <div className="sidebar-footer">

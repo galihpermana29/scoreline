@@ -573,6 +573,14 @@ export const StreamScreen = ({
       ) : null}
       <button
         className="toolbar-button"
+        onClick={() => window.location.reload()}
+        title="Reload the whole page (feed, host lookups and the embed all start clean) - the TV-friendly way to refresh"
+      >
+        <Icon name="refresh" size={14} />
+        Refresh
+      </button>
+      <button
+        className="toolbar-button"
         onClick={toggleFullscreen}
         title={isFullscreen ? "Leave fullscreen" : "Fullscreen the live embed (uses this page, not the player's own button)"}
       >

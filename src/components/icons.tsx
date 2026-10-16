@@ -32,7 +32,8 @@ export type IconName =
   | "clear"
   | "sidebar"
   | "sun"
-  | "moon";
+  | "moon"
+  | "refresh";
 
 const STROKE = {
   fill: "none",
@@ -154,6 +155,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   moon: <path {...STROKE} d="M16.4 12.2A6.8 6.8 0 0 1 7.8 3.6a6.8 6.8 0 1 0 8.6 8.6z" />,
+  refresh: (
+    <>
+      <path {...STROKE} d="M17.1 12.5a7.5 7.5 0 1 1-1.8-7.8l3.9 3.6" />
+      <path {...STROKE} d="M19.2 3.2v5.1h-5" />
+    </>
+  ),
 };
 
 export const Icon = ({ name, size = 20, ...rest }: { name: IconName; size?: number } & SVGProps<SVGSVGElement>) => (
