@@ -12,6 +12,7 @@ import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
 import { downloadCalendarEvent } from "../lib/calendar";
+import { usePerfMode } from "../lib/perf";
 
 /**
  * The watch screen. It mirrors the feed's own deep-link shape
@@ -517,6 +518,30 @@ export const StreamScreen = ({
         : { label: "Live page embed", tone: "live" as const, title: "The source site's full match page is embedded, on its currently resolved domain" }
     : { label: "Simulated", tone: "idle" as const, title: "This frame plays no video until you press play - it is a local simulation" };
 
+  // Performance mode: the visitor's own budget switch (see lib/perf.ts),
+  // reached from the toolbar in both the playing and the stopped state -
+  // a TV visitor flips it once and the whole app changes behaviour, it is
+  // remembered per browser.
+  const [perf, setPerf] = usePerfMode();
+  const perfControls = (
+    <div className="player-embed-mode player-embed-mode-perf" role="group" aria-label="Performance mode">
+      <button
+        className={perf === "light" ? "player-embed-mode-on" : undefined}
+        onClick={() => setPerf("light")}
+        title="Lean running for weak hardware (smart TVs): while a stream plays, feed updates pause and hidden pages unmount; blur effects and animations are dropped everywhere"
+      >
+        Light
+      </button>
+      <button
+        className={perf === "normal" ? "player-embed-mode-on" : undefined}
+        onClick={() => setPerf("normal")}
+        title="The full experience: animations, blur effects and minute-by-minute feed updates"
+      >
+        Normal
+      </button>
+    </div>
+  );
+
   const embedControls = (
     <>
       <div className="player-embed-mode" role="group" aria-label="Embed mode">
@@ -591,6 +616,7 @@ export const StreamScreen = ({
         <Icon name="stop" size={14} />
         Stop
       </button>
+      {perfControls}
     </>
   );
 
@@ -831,6 +857,7 @@ export const StreamScreen = ({
                 <button className="button-tinted" onClick={() => onMore(match)}>
                   Details
                 </button>
+                {perfControls}
               </>
             )}
           </motion.div>

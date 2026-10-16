@@ -8,6 +8,7 @@ import { TOP_CATEGORIES, byPriority, categoryForSlug } from "./domain/categories
 import { byKickoff, type Match } from "./domain/match";
 import { canWatch, matchHref } from "./lib/route";
 import { navigate, useLocation, type BrowseRoute, type Route } from "./lib/router";
+import { usePerfMode } from "./lib/perf";
 import { useAsync } from "./lib/useAsync";
 import { useMediaQuery } from "./lib/useMediaQuery";
 import { CategoryScreen } from "./screens/CategoryScreen";
@@ -70,10 +71,16 @@ const useSidebarRail = (tablet: boolean, watchingHref: string | null) => {
  * The live feed is the app's single data source. The curated popular set
  * loads immediately (one request); extra sports are hydrated in the
  * background with spaced requests to stay under the Cloudflare rate limit.
+ *
+ * `paused` (light mode while a stream plays, 2026-10-17) stops both pollers:
+ * no background requests, and no re-render of whatever shows the data while
+ * the visitor watches. Resuming catches up in the background immediately
+ * (see useAsync), so a long pause never leaves stale scores on screen for a
+ * full interval afterwards.
  */
-const useLiveFeed = () => {
-  const { state: core, reload } = useAsync("live-core", fetchLivePopular, 60_000);
-  const { state: extras } = useAsync("live-extras", fetchLiveExtraSports, 180_000);
+const useLiveFeed = (paused: boolean) => {
+  const { state: core, reload } = useAsync("live-core", fetchLivePopular, 60_000, paused);
+  const { state: extras } = useAsync("live-extras", fetchLiveExtraSports, 180_000, paused);
 
   const matches = useMemo(() => {
     const coreMatches = core.status === "ready" ? core.data : [];
@@ -112,7 +119,11 @@ const browseKey = (route: BrowseRoute): string => {
 export const App = () => {
   const location = useLocation();
   const phone = useMediaQuery(PHONE_QUERY);
-  const feed = useLiveFeed();
+  // The match route riding on top of the browse surface, if any. Computed
+  // up front because the feed's light-mode pause gate depends on it.
+  const watching = location.route.kind === "match" ? location.route : null;
+  const [perf] = usePerfMode();
+  const feed = useLiveFeed(watching !== null && perf === "light");
   const [selected, setSelected] = useState<Match | null>(null);
   const closeSheet = useCallback(() => setSelected(null), []);
 
@@ -132,7 +143,6 @@ export const App = () => {
   const lastBrowse = useRef<BrowseRoute>(location.route.kind === "match" ? { kind: "home" } : location.route);
   if (location.route.kind !== "match") lastBrowse.current = location.route;
   const browseRoute = lastBrowse.current;
-  const watching = location.route.kind === "match" ? location.route : null;
   const tablet = useMediaQuery(TABLET_QUERY);
   const sidebar = useSidebarRail(tablet, watching?.href ?? null);
 
@@ -242,10 +252,18 @@ export const App = () => {
     }
   })();
 
+  // Light mode unmounts the browse surface while a stream is on top
+  // (2026-10-17): an inert-but-mounted home page still costs the DOM tree,
+  // its images and every feed-driven re-render, and a smart TV running
+  // everything in one WebView process feels that cost as hour-two latency.
+  // Normal mode keeps it mounted: closing the watch layer must stay
+  // instant there, and the laptop has headroom to spare.
+  const showBrowse = !(perf === "light" && watching !== null);
+
   const shellRoute: Route = watching ?? browseRoute;
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={perf === "light" ? "always" : "user"}>
       <div
         className={[
           "frame",
@@ -255,19 +273,22 @@ export const App = () => {
         ]
           .filter(Boolean)
           .join(" ")}
+        data-perf={perf}
       >
         {phone ? null : <Sidebar route={shellRoute} matches={feed.matches} rail={sidebar.rail} onToggle={sidebar.toggle} />}
 
         <main className="content" inert={watching !== null ? true : undefined}>
-          <motion.div
-            key={browseKey(browseRoute)}
-            className="content-enter"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: EASE_OUT }}
-          >
-            {browse}
-          </motion.div>
+          {showBrowse ? (
+            <motion.div
+              key={browseKey(browseRoute)}
+              className="content-enter"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: EASE_OUT }}
+            >
+              {browse}
+            </motion.div>
+          ) : null}
         </main>
 
         {phone && watching === null ? <TabBar route={shellRoute} /> : null}

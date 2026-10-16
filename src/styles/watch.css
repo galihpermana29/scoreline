@@ -205,7 +205,12 @@
      way during a stream; the backdrop blur keeps the labels legible over
      whatever scrolls under it. Interacting (hover, or focus arriving via
      keyboard/TV remote) restores the full material so the controls read
-     crisply exactly when they are being used. */
+     crisply exactly when they are being used. The plain `var(--bar)` line
+     before the mix is the legacy-engine fallback: `color-mix()` is
+     Chromium ~111+/Safari ~16.2+ and an older TV WebView silently drops
+     the whole declaration, which would leave the resting pill with no
+     background at all - the fallback hands it the solid bar instead. */
+  background: var(--bar);
   background: color-mix(in srgb, var(--bar) 45%, transparent);
   border: 0.5px solid var(--hairline);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
@@ -220,6 +225,16 @@
 .watch-toolbar:focus-within {
   background: var(--bar);
   box-shadow: 0 18px 48px var(--shadow);
+}
+
+/* Light mode (see base.css): the global blur kill removes the fuzz that
+   made the ~0.38 resting alpha readable, so the pill leans on alpha alone
+   - ~0.67 mixed is still clearly translucent, but the labels keep their
+   contrast over a bright court. Engines without color-mix drop this line
+   and keep the solid bar above. */
+.frame[data-perf="light"] .watch-toolbar {
+  background: color-mix(in srgb, var(--bar) 80%, transparent);
+  box-shadow: 0 8px 20px var(--shadow);
 }
 
 /* Phone: a compact nav bar sits above the frame (never over the player's

@@ -1,5 +1,6 @@
 import { motion, useDragControls, useMotionValue, useTransform, type PanInfo } from "motion/react";
 import type { ReactNode } from "react";
+import { useTvNavigation } from "../lib/tvnav";
 
 /**
  * The watch screen's container. It floats above the browse surface so
@@ -15,6 +16,12 @@ import type { ReactNode } from "react";
  * always exactly as faded as the layer is dismissed, mid-gesture included.
  */
 export const WatchLayer = ({ phone, onDismiss, children }: { phone: boolean; onDismiss: () => void; children: ReactNode }) => {
+  // The watch layer is where a remote replaces the mouse: arrow keys carry
+  // a D-pad, so geometric focus navigation lives exactly here and nowhere
+  // else (see lib/tvnav.ts). Hook order still rules - it is called before
+  // the phone branch returns.
+  useTvNavigation();
+
   const controls = useDragControls();
   const x = useMotionValue(0);
   const width = typeof window === "undefined" ? 480 : window.innerWidth;
