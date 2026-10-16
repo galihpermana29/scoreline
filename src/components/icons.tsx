@@ -35,6 +35,7 @@ export type IconName =
   | "sidebar"
   | "sun"
   | "moon"
+  | "tv"
   | "refresh";
 
 const STROKE = {
@@ -169,6 +170,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   moon: <path {...STROKE} d="M16.4 12.2A6.8 6.8 0 0 1 7.8 3.6a6.8 6.8 0 1 0 8.6 8.6z" />,
+  tv: (
+    <>
+      <rect {...STROKE} x="2.4" y="3.4" width="15.2" height="10.6" rx="2.2" />
+      <path {...STROKE} d="M10 14v2.6M7 17.6h6" />
+    </>
+  ),
   refresh: (
     <>
       <path {...STROKE} d="M17.1 12.5a7.5 7.5 0 1 1-1.8-7.8l3.9 3.6" />

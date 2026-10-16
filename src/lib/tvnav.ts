@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 
 /**
- * D-pad (spatial) navigation for the watch layer: arrow keys move focus
+ * D-pad (spatial) navigation for the app chrome: arrow keys move focus
  * geometrically, Enter activates, exactly like a TV remote expects
  * (2026-10-17: TV browsers - and Android WebView shells like TVBro in
  * particular - do not ship spatial navigation, so with a remote the app
- * is otherwise pointer-only).
+ * is otherwise pointer-only). Mounted in App, gated on TV Mode
+ * (lib/tvmode.ts): the sidebar and browse surface answer the remote too,
+ * while off-mode browsers keep their native arrow behaviour (scrolling).
  *
  * How it works: every arrow keypress looks at the currently focused
  * element's box, gathers every rendered focusable control outside inert
@@ -21,8 +23,10 @@ import { useEffect } from "react";
  * Scope note: while the watch layer is open the browse surface is inert,
  * and programmatically focusing an element inside an inert subtree is a
  * no-op by spec - the `closest('[inert]')` filter just avoids wasting the
- * pick on them. Non-watching surfaces are untouched: this hook is only
- * mounted inside the watch layer.
+ * pick on them. The hook is mounted app-wide (App passes TV Mode as the
+ * gate, so a pointer-driven browser keeps its native arrow behaviour:
+ * scrolling), and the inert filter keeps it out of the hidden surface
+ * meanwhile.
  */
 
 const DIRECTIONS = {
@@ -121,8 +125,9 @@ const focusNearest = (direction: Direction): boolean => {
 };
 
 /** Activates D-pad navigation for as long as the calling layer is mounted. */
-export const useTvNavigation = () => {
+export const useTvNavigation = (enabled = true) => {
   useEffect(() => {
+    if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const direction = DIRECTIONS[event.key as keyof typeof DIRECTIONS];
       if (direction === undefined) return;
@@ -141,5 +146,5 @@ export const useTvNavigation = () => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [enabled]);
 };

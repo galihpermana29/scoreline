@@ -6,6 +6,7 @@ import { browsePath, navigate, type Route } from "../lib/router";
 import { Icon, type IconName } from "./icons";
 import { ScorelineBadge } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
+import { TvModeToggle } from "./TvModeToggle";
 
 const CATEGORY_ICON: Record<string, IconName> = {
   live: "live",
@@ -238,6 +239,7 @@ export const Sidebar = ({
           <span className="nav-label">Refresh</span>
         </button>
         <ThemeToggle variant="row" />
+        <TvModeToggle />
       </div>
       <div className="sidebar-footer">
         <span className="brand-mark" aria-hidden>

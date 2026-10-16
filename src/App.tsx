@@ -10,6 +10,8 @@ import { canWatch, matchHref } from "./lib/route";
 import { navigate, useLocation, type BrowseRoute, type Route } from "./lib/router";
 import { useAsync } from "./lib/useAsync";
 import { useMediaQuery } from "./lib/useMediaQuery";
+import { useTvMode } from "./lib/tvmode";
+import { useTvNavigation } from "./lib/tvnav";
 import { CategoryScreen } from "./screens/CategoryScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LeaguesScreen } from "./screens/LeaguesScreen";
@@ -118,6 +120,11 @@ const browseKey = (route: BrowseRoute): string => {
 export const App = () => {
   const location = useLocation();
   const phone = useMediaQuery(PHONE_QUERY);
+  // TV Mode is the D-pad contract (see lib/tvmode.ts): the spatial
+  // navigation mounts app-wide only while it is on, so a pointer-driven
+  // browser keeps the native arrow behaviour (scrolling the page).
+  const tv = useTvMode();
+  useTvNavigation(tv === "on");
   // The match route riding on top of the browse surface, if any. Computed
   // up front because the watch-session feed pause depends on it.
   const watching = location.route.kind === "match" ? location.route : null;

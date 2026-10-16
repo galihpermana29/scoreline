@@ -109,6 +109,14 @@
   color: var(--label);
 }
 
+/* TV Mode's own lamp: unlike the theme row (whose icon swaps sun/moon),
+ * the TV glyph is static, so the on-state tints the row - legible on the
+ * rail from across the room. */
+.nav-item.tv-row.is-on {
+  color: var(--label);
+  background: var(--fill-selected);
+}
+
 .nav-active {
   position: absolute;
   inset: 0;

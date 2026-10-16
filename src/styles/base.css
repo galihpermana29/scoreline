@@ -222,6 +222,32 @@ input:focus-visible {
   border-radius: 10px;
 }
 
+/* TV Mode (sidebar toggle, state in lib/tvmode.ts): a remote has no pointer
+ * precision, so the host page gives up its cursor entirely and the focus
+ * ring carries the location instead. The blanket !important mirrors the
+ * blur-kill above - every surface, including future ones, obeys. The
+ * cross-origin stream iframe keeps its own cursor for the in-video play
+ * click, which is the desired exception (pointer events over an iframe
+ * are theirs, not ours). Boosted `:focus` on top of `:focus-visible`:
+ * older TV WebViews can miss :focus-visible on programmatic focus (the
+ * D-pad focuses programmatically), and that mismatch would leave the
+ * visitor with no visible location at all.
+ * Note: swipe gestures the remote converts to pointer moves now click at
+ * the invisible cursor position instead of steering it - the accepted
+ * trade-off for sofa use, arrow keys + OK are the intended drivers. */
+html[data-tv="on"],
+html[data-tv="on"] * {
+  cursor: none !important;
+}
+
+html[data-tv="on"] :focus,
+html[data-tv="on"] :focus-visible {
+  outline: 3.5px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--focus-ring) 22%, transparent);
+}
+
 img {
   display: block;
 }
