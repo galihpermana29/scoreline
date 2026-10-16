@@ -82,12 +82,39 @@ Run the playbook commands under "Live diagnosis" before changing any code.
 | Direct player falls back to page embed with "refused" notice | The gate tightened (Referer/Sec-Fetch mix changed) or the mdata shape changed in a detectable way | Reproduce the gate with the curl below; if 401 comes back with a Referer, compare against what their own match page constructs for its player iframe (Page mode works because it uses their code) |
 | Direct player falls back with "no host answered" notice | Player hosts rotated faster than the 10-minute cache, or all dead | Clear `scoreline:player-hosts`, reload, check the params API still lists hosts; the notice self-clears in 6s and retry re-probes |
 | Player embed mounts but no video boots | mdata shape changed - **undetectable from outside**: a garbage mdata still answers 200 because their player parses it client-side | This is the one failure no probe can see. Verify by switching to Page mode: if their own page still plays, the mdata construction in `playerUrl` needs re-reverse-engineering from their current player.js |
-| Everything redirects / entry unreachable | Generation burn: old hosts 301 to a new generation without CORS headers | The 301 chains are only walkable server-side (`/api/resolve-redirect`, dev middleware). Find the new entry host by hand (their socials/redirect targets), verify it serves `/id` with 200 + ACAO, then add it to `DIRECT_ENTRY_HOSTS` |
+| Everything redirects / entry unreachable | Generation burn: old hosts 301 to a new generation without CORS headers | The 301 chains are only walkable server-side (`/api/resolve-redirect`, dev middleware). Find the new entry host by hand (their socials/redirect targets), verify it serves `/id` with 200 + ACAO, then add it to `SCORELINE_ENTRY_HOSTS` in `.env` |
 | Watchdog loops: "reconnecting" then retry notice | Whole network down from this machine, or mid-rotation while you watch | Check basic reachability first (curl an entry host). If truly down, wait - the feed reloads every 60s and retry re-resolves everything |
 | Player hosts resolve but stale / wrong | Cache poisoning or the params union scan picked up junk | Hosts are unioned from any `iframePlayerDomains` key anywhere in the params tree; inspect the decoded params (see playbook) for a renamed/moved list |
 
 After any fix, run `npm run typecheck`, then re-verify the whole chain live end to end (open a live match, press play, confirm the iframe src and the "Live player" flag).
 Synthetic clicks cannot start the actual video - browsers require user activation - so "video did not autoplay" is not a bug; verifying means the player chrome renders and no ads appear.
+
+## The escalation ladder (planned response if the embeds get shut out)
+
+The player gate moved twice within a single day (2026-10-16), so this section pre-plans the response instead of leaving the next agent to improvise.
+Climb one rung only when the rung below is provably dead, and always with live evidence first (open their real page in a browser, read what their JS now requires).
+
+**Rung 0 - already self-healing, never code against it:**
+host rotation, cipher shifts, key renames, dead player hosts, and allowlist changes.
+The resolver chain, the all-shift decoder, the naming-tolerant matchers, the probe pipeline and the watchdog absorb all of these without code changes.
+The direct-player toggle already reacts to `playSiteDomains` on its own: it reappears if the operator ever loosens the allowlist and stays hidden when they tighten it.
+
+**Rung 1 - the current production embed ("page" mode) and why it holds:**
+the full match page runs the source's own code for the player handoff, so breaking it means breaking their own site.
+Frame-busting already fails against it: the watch screen's iframe sandbox withholds top-navigation, so their own `top.location = self` code silently throws and the frame stays put.
+What *would* break it: `X-Frame-Options` / `frame-ancestors` added to the match page, or a referer gate on the match page itself (both are iframe concepts; neither exists as of 2026-10-16).
+
+**Rung 2 - open-on-source escape hatch (build when page mode provably dies):**
+a watch-screen button that opens the resolved match URL in a new tab.
+Top-level navigation ignores every framing rule - `X-Frame-Options`, `frame-ancestors`, and referer allowlists regulate iframe embedding, not normal page visits, so visitors arriving from anywhere cannot be gated this way.
+Works as long as their site works in a normal browser; the cost is leaving the app UI, which is why it is a fallback and deliberately not built yet.
+
+**Rung 3 - same-origin proxy shim (last resort, arms race):**
+route the match page through a server function that rewrites its links to stay inside the proxy and injects a script that redefines `document.referrer` (Object.defineProperty on the document instance) before their JS reads it - possible only because the proxied page is then same-origin to the app.
+It works, but every change to their player JS starts a new round, so this is monthly maintenance and must never be built preemptively.
+
+Standing rule for every rung: both gate changes observed on 2026-10-16 were answered by simplification (stop mounting what they refuse) rather than battle.
+Expect the same next time: diagnose live, drop the broken embed, fall back to what still works - the ladder exists so falling back is a decision, not a scramble.
 
 ## Live diagnosis playbook
 
