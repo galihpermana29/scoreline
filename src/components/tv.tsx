@@ -5,6 +5,7 @@ import { matchLabel, type League, type Match } from "../domain/match";
 import { canWatch } from "../lib/route";
 import { formatShortDate, formatTime, relativeDayLabel } from "../lib/format";
 import { Icon } from "./icons";
+import { ScorelineBadge } from "./Logo";
 import { Crest } from "./ui";
 
 /** Card click: open the match (watch when possible), morphing out of `layoutId`. */
@@ -407,9 +408,9 @@ export const PromoBanner = ({ onAction }: { onAction: () => void }) => (
     <div className="promo-copy">
       <span className="promo-brand">
         <span className="brand-mark" aria-hidden>
-          <Icon name="play" size={12} />
+          <ScorelineBadge />
         </span>
-        Scoreline
+        scoreline
       </span>
       <h3 className="promo-title">Every match. Every sport. One place.</h3>
       <p className="promo-sub">Live scores and streams across football, badminton, basketball, F1 and more - refreshed every minute.</p>

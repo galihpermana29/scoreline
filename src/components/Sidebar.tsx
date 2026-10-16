@@ -4,6 +4,7 @@ import { TOP_CATEGORIES, extraCategories, type Category } from "../domain/catego
 import { SPORT_ICON, type Match } from "../domain/match";
 import { browsePath, navigate, type Route } from "../lib/router";
 import { Icon, type IconName } from "./icons";
+import { ScorelineBadge } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 
 const CATEGORY_ICON: Record<string, IconName> = {
@@ -229,9 +230,9 @@ export const Sidebar = ({
       </div>
       <div className="sidebar-footer">
         <span className="brand-mark" aria-hidden>
-          <Icon name="play" size={12} />
+          <ScorelineBadge />
         </span>
-        <span className="brand-name">Scoreline</span>
+        <span className="brand-name">scoreline</span>
       </div>
     </aside>
   );
