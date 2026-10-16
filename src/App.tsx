@@ -8,7 +8,6 @@ import { TOP_CATEGORIES, byPriority, categoryForSlug } from "./domain/categories
 import { byKickoff, type Match } from "./domain/match";
 import { canWatch, matchHref } from "./lib/route";
 import { navigate, useLocation, type BrowseRoute, type Route } from "./lib/router";
-import { usePerfMode } from "./lib/perf";
 import { useAsync } from "./lib/useAsync";
 import { useMediaQuery } from "./lib/useMediaQuery";
 import { CategoryScreen } from "./screens/CategoryScreen";
@@ -72,7 +71,7 @@ const useSidebarRail = (tablet: boolean, watchingHref: string | null) => {
  * loads immediately (one request); extra sports are hydrated in the
  * background with spaced requests to stay under the Cloudflare rate limit.
  *
- * `paused` (light mode while a stream plays, 2026-10-17) stops both pollers:
+ * `paused` (any watch session, since 2026-10-17) stops both pollers:
  * no background requests, and no re-render of whatever shows the data while
  * the visitor watches. Resuming catches up in the background immediately
  * (see useAsync), so a long pause never leaves stale scores on screen for a
@@ -120,10 +119,9 @@ export const App = () => {
   const location = useLocation();
   const phone = useMediaQuery(PHONE_QUERY);
   // The match route riding on top of the browse surface, if any. Computed
-  // up front because the feed's light-mode pause gate depends on it.
+  // up front because the watch-session feed pause depends on it.
   const watching = location.route.kind === "match" ? location.route : null;
-  const [perf] = usePerfMode();
-  const feed = useLiveFeed(watching !== null && perf === "light");
+  const feed = useLiveFeed(watching !== null);
   const [selected, setSelected] = useState<Match | null>(null);
   const closeSheet = useCallback(() => setSelected(null), []);
 
@@ -252,18 +250,17 @@ export const App = () => {
     }
   })();
 
-  // Light mode unmounts the browse surface while a stream is on top
-  // (2026-10-17): an inert-but-mounted home page still costs the DOM tree,
-  // its images and every feed-driven re-render, and a smart TV running
-  // everything in one WebView process feels that cost as hour-two latency.
-  // Normal mode keeps it mounted: closing the watch layer must stay
-  // instant there, and the laptop has headroom to spare.
-  const showBrowse = !(perf === "light" && watching !== null);
+  // The browse surface unmounts while a stream is on top (2026-10-17):
+  // an inert-but-mounted home page still costs the DOM tree, its images and
+  // every feed-driven re-render, and a smart TV running everything in one
+  // WebView process feels that cost as hour-two latency. Re-mounting on
+  // close is a brief skeleton pass - the feed data is already cached.
+  const showBrowse = watching === null;
 
   const shellRoute: Route = watching ?? browseRoute;
 
   return (
-    <MotionConfig reducedMotion={perf === "light" ? "always" : "user"}>
+    <MotionConfig reducedMotion="always">
       <div
         className={[
           "frame",
@@ -273,7 +270,6 @@ export const App = () => {
         ]
           .filter(Boolean)
           .join(" ")}
-        data-perf={perf}
       >
         {phone ? null : <Sidebar route={shellRoute} matches={feed.matches} rail={sidebar.rail} onToggle={sidebar.toggle} />}
 

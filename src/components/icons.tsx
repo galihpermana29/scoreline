@@ -20,6 +20,8 @@ export type IconName =
   | "chevron-right"
   | "chevron-down"
   | "play"
+  | "player"
+  | "page"
   | "stop"
   | "fullscreen"
   | "fullscreen-exit"
@@ -113,6 +115,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
   "chevron-right": <path {...STROKE} strokeWidth={2} d="m7.6 4.4 5.6 5.6-5.6 5.6" />,
   "chevron-down": <path {...STROKE} strokeWidth={2} d="m4.4 7.6 5.6 5.6 5.6-5.6" />,
   play: <path fill="currentColor" d="M6 3.6v12.8c0 .7.8 1.2 1.4.8l10-6.4c.6-.4.6-1.2 0-1.6l-10-6.4C6.8 2.4 6 2.9 6 3.6z" />,
+  player: (
+    <>
+      <rect {...STROKE} x="2.4" y="4" width="15.2" height="12" rx="2.4" />
+      <path fill="currentColor" d="M8.6 7.7v4.6c0 .5.6.9 1 .5l3.6-2.3c.4-.3.4-.9 0-1.2L9.6 7.1c-.4-.3-1 .1-1 .6z" />
+    </>
+  ),
+  page: (
+    <>
+      <rect {...STROKE} x="3.2" y="2.8" width="13.6" height="14.4" rx="2.2" />
+      <path {...STROKE} d="M3.2 6.8h13.6M6.4 10h7.2M6.4 13.2h4.8" />
+    </>
+  ),
   stop: <rect fill="currentColor" x="4.5" y="4.5" width="11" height="11" rx="2" />,
   fullscreen: <path {...STROKE} d="M3.4 7.6V3.4h4.2M16.6 7.6V3.4h-4.2M3.4 12.4v4.2h4.2M16.6 12.4v4.2h-4.2" />,
   "fullscreen-exit": <path {...STROKE} d="M7.6 3.4v4.2H3.4M12.4 3.4v4.2h4.2M7.6 16.6v-4.2H3.4M12.4 16.6v-4.2h4.2" />,

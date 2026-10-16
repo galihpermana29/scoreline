@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { Match } from "../domain/match";
 import { matchLabel } from "../domain/match";
@@ -12,7 +12,6 @@ import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
 import { downloadCalendarEvent } from "../lib/calendar";
-import { usePerfMode } from "../lib/perf";
 
 /**
  * The watch screen. It mirrors the feed's own deep-link shape
@@ -163,6 +162,22 @@ const PAGE_EMBED_MASK = { top: 16, bottom: 40 } as const;
 const PAGE_EMBED_KICK_DELAY_MS = 900;
 const PAGE_ZOOM_KEY = "scoreline:page-zoom";
 const HIDE_ADS_KEY = "scoreline:hide-ads";
+
+/**
+ * The one-time welcome note shown before the first watch (the modal itself
+ * is near the JSX at the bottom of this file). Set the moment the visitor
+ * confirms, not when the modal first shows - closing it without watching
+ * leaves it unseen, so a first-timer who backed out still gets the ad
+ * explainer on their next try.
+ */
+const WATCH_INTRO_KEY = "scoreline:watch-intro";
+const WATCH_INTRO_COPY = {
+  title: "Selamat menonton di Scoreline!",
+  body:
+    "Perhatian: Iklan masih akan ditampilkan, namun dalam jumlah yang sangat terbatas. Untuk menghilangkannya, silakan klik iklan tersebut atau gunakan fitur Ads Guard yang tersedia di toolbar.",
+  cta: "Mulai menonton",
+} as const;
+
 const kickHint = (match: Match): string =>
   match.status.kind === "live" ? "In progress" : match.status.kind === "upcoming" ? "Kick-off" : "Final";
 
@@ -189,11 +204,33 @@ export const StreamScreen = ({
 }) => {
   const scored = match.homeScore !== null && match.awayScore !== null && match.status.kind !== "upcoming";
   const live = match.status.kind === "live";
+  // The welcome note's seen flag lives above `playing` because the very
+  // first watch usually arrives through autoplay (the Watch card click):
+  // an unseen visitor gets the note instead of the stream, and
+  // confirming is itself a click, so the embed still starts with user
+  // activation.
+  const [introSeen, setIntroSeen] = useState(() => {
+    try {
+      return localStorage.getItem(WATCH_INTRO_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [introOpen, setIntroOpen] = useState(false);
   // The live embed only exists while playing; stopped means fully unmounted,
   // so the stream and its bandwidth stop too. A click that asked to watch a
-  // live match starts it straight away - that click is the user activation.
-  const [playing, setPlaying] = useState(autoplay && live);
+  // live match starts it straight away - that click is the user activation -
+  // unless the one-time welcome note intervenes (then confirming is the
+  // activation).
+  const [playing, setPlaying] = useState(autoplay && live && introSeen);
   const [embedReady, setEmbedReady] = useState(false);
+
+  // A watch request that arrived as autoplay (the card click that opened
+  // this screen) opens the welcome note instead of starting silently.
+  // Mount-only on purpose: the note opens exactly once per arrival.
+  useEffect(() => {
+    if (autoplay && live && !introSeen) setIntroOpen(true);
+  }, []);
 
   // Rotation resilience: the embedded origins come from runtime resolution,
   // and a stalled frame triggers a fresh re-resolution plus a remount (bumping
@@ -442,11 +479,46 @@ export const StreamScreen = ({
     };
   })();
 
-  const startEmbed = () => {
+  // The embed start sits behind the one-time welcome note: both play paths
+  // (the big centre button and the toolbar's Play Live) funnel through
+  // startEmbed, so the note gates every first watch without the caller
+  // knowing anything about it. Confirming marks it seen and starts; the
+  // scrim or Escape dismisses it unseen, so a visitor who backed out still
+  // gets the ad explainer next time. (The intro states live above `playing`
+  // - the autoplay arrival path also reads them at mount.)
+  const beginEmbed = () => {
     setEmbedReady(false);
     setEmbedFailures(0);
     setPlaying(true);
   };
+  const startEmbed = () => {
+    if (!introSeen) {
+      setIntroOpen(true);
+      return;
+    }
+    beginEmbed();
+  };
+  const confirmIntro = () => {
+    try {
+      localStorage.setItem(WATCH_INTRO_KEY, "1");
+    } catch {
+      // Private mode: this browser sees the note every session. Fine.
+    }
+    setIntroSeen(true);
+    setIntroOpen(false);
+    beginEmbed();
+  };
+
+  // Escape closes the welcome note (dismisses without starting - the
+  // visitor simply stays on the simulated player).
+  useEffect(() => {
+    if (!introOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIntroOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [introOpen]);
   const stopEmbed = () => {
     setPlaying(false);
     setEmbedReady(false);
@@ -518,30 +590,9 @@ export const StreamScreen = ({
         : { label: "Live page embed", tone: "live" as const, title: "The source site's full match page is embedded, on its currently resolved domain" }
     : { label: "Simulated", tone: "idle" as const, title: "This frame plays no video until you press play - it is a local simulation" };
 
-  // Performance mode: the visitor's own budget switch (see lib/perf.ts),
-  // reached from the toolbar in both the playing and the stopped state -
-  // a TV visitor flips it once and the whole app changes behaviour, it is
-  // remembered per browser.
-  const [perf, setPerf] = usePerfMode();
-  const perfControls = (
-    <div className="player-embed-mode player-embed-mode-perf" role="group" aria-label="Performance mode">
-      <button
-        className={perf === "light" ? "player-embed-mode-on" : undefined}
-        onClick={() => setPerf("light")}
-        title="Lean running for weak hardware (smart TVs): while a stream plays, feed updates pause and hidden pages unmount; blur effects and animations are dropped everywhere"
-      >
-        Light
-      </button>
-      <button
-        className={perf === "normal" ? "player-embed-mode-on" : undefined}
-        onClick={() => setPerf("normal")}
-        title="The full experience: animations, blur effects and minute-by-minute feed updates"
-      >
-        Normal
-      </button>
-    </div>
-  );
-
+  // Icon-only controls (compact pill, one TV row; `title` carries the
+  // tooltip on hover and `aria-label` keeps the names audible - the stopped
+  // state's CTAs keep their words, these are settled muscle-memory pills).
   const embedControls = (
     <>
       <div className="player-embed-mode" role="group" aria-label="Embed mode">
@@ -550,6 +601,7 @@ export const StreamScreen = ({
           onClick={() => setEmbedMode("player")}
           disabled={!canPlayer}
           hidden={!directPlayerAllowed}
+          aria-label="Player embed"
           title={
             directPlayerAllowed
               ? canPlayer
@@ -558,20 +610,22 @@ export const StreamScreen = ({
               : "Not available: the source's player only accepts embeds from its own allowlisted domains"
           }
         >
-          Player
+          <Icon name="player" size={16} />
         </button>
         <button
           className={embedMode === "page" ? "player-embed-mode-on" : undefined}
           onClick={() => setEmbedMode("page")}
+          aria-label="Page embed"
           title="Embed the source site's full match page - the fallback if the bare player ever stops working"
         >
-          Page
+          <Icon name="page" size={16} />
         </button>
       </div>
       {embedMode === "page" ? (
         <button
           className={`toolbar-button${zoom ? " player-embed-mode-on" : ""}`}
           onClick={toggleZoom}
+          aria-label="Zoom"
           title={
             zoom
               ? "The video is scaled to fill the frame, cropping the source page's banners - click to show the whole page"
@@ -579,44 +633,46 @@ export const StreamScreen = ({
           }
         >
           <Icon name="zoom" size={16} />
-          Zoom
         </button>
       ) : null}
       {embedMode === "page" && zoom ? (
         <button
           className={`toolbar-button${hideAds ? " player-embed-mode-on" : ""}`}
           onClick={toggleHideAds}
+          aria-label="Ads guard"
           title={
             hideAds
-              ? "On: the banner bands that drift into the crop are masked black, at the price of cropping those strips off the picture - click to show the source's ads"
-              : "The source's banner ads are shown as-is - click to mask the bands that drift into the crop"
+              ? "Ads guard on: the banner bands that drift into the crop are masked black, at the price of cropping those strips off the picture - click to show the source's ads"
+              : "Ads guard off - click to mask the banner bands that drift into the crop"
           }
         >
           <Icon name="shield" size={16} />
-          Hide ads
         </button>
       ) : null}
       <button
         className="toolbar-button"
         onClick={() => window.location.reload()}
+        aria-label="Refresh"
         title="Reload the whole page (feed, host lookups and the embed all start clean) - the TV-friendly way to refresh"
       >
         <Icon name="refresh" size={14} />
-        Refresh
       </button>
       <button
         className="toolbar-button"
         onClick={toggleFullscreen}
+        aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         title={isFullscreen ? "Leave fullscreen" : "Fullscreen the live embed (uses this page, not the player's own button)"}
       >
         <Icon name={isFullscreen ? "fullscreen-exit" : "fullscreen"} size={16} />
-        {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
       </button>
-      <button className="toolbar-button" onClick={stopEmbed} title="Stop the live embed and return to the simulated player">
+      <button
+        className="toolbar-button"
+        onClick={stopEmbed}
+        aria-label="Stop"
+        title="Stop the live embed and return to the simulated player"
+      >
         <Icon name="stop" size={14} />
-        Stop
       </button>
-      {perfControls}
     </>
   );
 
@@ -826,20 +882,23 @@ export const StreamScreen = ({
             </div>
           </div>
           {/*
-              The toolbar floats (see .watch-toolbar in watch.css): it is
-              fixed to the bottom, centered over the layer, always in reach
-              without scrolling. The spring ride-in runs once on mount; the
-              transform animations below belong to motion, which is why the
-              CSS centers with margins instead of a translate. */
+              The toolbar floats (see .watch-toolbar-lane in watch.css): a
+              fixed lane centers the pill over the layer, always in reach
+              without scrolling. Two plain layers on purpose - old TV
+              WebViews resolve over-constrained fixed boxes differently,
+              so the lane centers with flexbox and the pill sizes itself.
+              The spring ride-in runs once on mount; the transform
+              animations belong to motion. */
             }
-            <motion.div
-              className="watch-toolbar"
-              role="toolbar"
-              aria-label="Player controls"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ type: "spring", bounce: 0.16, duration: 0.55, delay: layoutId ? 0.22 : 0.05 }}
-            >
+            <div className="watch-toolbar-lane">
+              <motion.div
+                className="watch-toolbar"
+                role="toolbar"
+                aria-label="Player controls"
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", bounce: 0.16, duration: 0.55, delay: layoutId ? 0.22 : 0.05 }}
+              >
             {playing ? (
               embedControls
             ) : (
@@ -857,10 +916,51 @@ export const StreamScreen = ({
                 <button className="button-tinted" onClick={() => onMore(match)}>
                   Details
                 </button>
-                {perfControls}
               </>
             )}
-          </motion.div>
+              </motion.div>
+            </div>
+
+            {/*
+                The one-time welcome note (see WATCH_INTRO_KEY): the
+                scrim itself is the flex layer that centres the card
+                (plain flexbox - no transform fights with motion), the
+                card carries the ad explainer. D-pad friendly: the
+                action button takes focus on open, Enter confirms,
+                Escape or the scrim dismisses.
+              */}
+            <AnimatePresence>
+              {introOpen ? (
+                <motion.div
+                  key="watch-intro"
+                  className="scrim watch-intro-layer"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                  onClick={() => setIntroOpen(false)}
+                >
+                  <motion.div
+                    className="watch-intro"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="watch-intro-title"
+                    initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97, y: 8 }}
+                    transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <h2 id="watch-intro-title">{WATCH_INTRO_COPY.title}</h2>
+                    <p>{WATCH_INTRO_COPY.body}</p>
+                    <button className="button-primary" autoFocus onClick={confirmIntro}>
+                      <Icon name="play" size={14} />
+                      {WATCH_INTRO_COPY.cta}
+                    </button>
+                  </motion.div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
         </div>
 
         <dl className="stream-meta">

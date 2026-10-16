@@ -11,11 +11,12 @@ export type AsyncState<T> =
  *
  * `paused` stops the background refresh interval without touching the data:
  * a paused poller keeps serving its last snapshot until it is resumed, which
- * is what light mode wants while a stream is playing (2026-10-17) - no
- * background requests, no re-renders of the surface showing the data. Pause
- * does not gate the initial load: a first mount always fetches. Timing: the
- * interval only fires while the tab is visible, so hidden tabs never spend
- * the source's rate-limit budget either.
+ * is what the watch session wants while a stream is playing (always-on since
+ * 2026-10-17, after a smart-TV session measured hour-two UI latency of
+ * ~1.5s per click) - no background requests, no re-renders of the surface
+ * showing the data. Pause does not gate the initial load: a first mount
+ * always fetches. Timing: the interval only fires while the tab is visible,
+ * so hidden tabs never spend the source's rate-limit budget either.
  */
 export const useAsync = <T>(
   key: string,

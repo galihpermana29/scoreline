@@ -561,24 +561,26 @@ img.art.is-loaded {
   }
 }
 
-/* ---------- light mode (frame[data-perf="light"]) ---------- */
-/* The visitor-selected performance budget (see lib/perf.ts, 2026-10-17),
-   born from a measured smart-TV session: after ~2h of streaming the whole
+/* ---------- no-blur chrome (always on since 2026-10-17) ---------- */
+/* Born from a measured smart-TV session: after ~2h of streaming the whole
    UI degraded to ~1.5s click latency while the same page on a laptop
    stayed smooth. TV browsers run everything (our chrome, the feed-driven
    browse surface, the ad-churning stream embed) in one low-RAM WebView
    process, so the constant costs are what drown - every backdrop blur
    re-composites per frame over the video, and decorative keyframe
-   animations repaint forever. Light mode drops those globally; the
-   layout, controls and transparency behaviour stay identical. */
-.frame[data-perf="light"],
-.frame[data-perf="light"] * {
+   animations repaint forever. The app therefore never ships frosted-glass
+   chrome; any backdrop-filter anywhere is neutralised here instead of
+   being hunted per declaration, so no future surface can reintroduce the
+   cost by accident. Layout, controls and transparency stay identical -
+   translucent surfaces sit on higher alphas where the text needs them. */
+.frame,
+.frame * {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
-.frame[data-perf="light"] * {
-  /* Decorative loops end after one frame instead of running for hours.
+.frame * {
+  /* Decorative loops end after one pass instead of running for hours.
      Transitions stay: they are short, self-terminating and cheap, and the
      focus/hover affordances still need them to read as alive. */
   animation-iteration-count: 1 !important;
