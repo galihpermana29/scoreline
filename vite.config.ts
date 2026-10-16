@@ -1,3 +1,4 @@
+import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { configEndpoint, probePlayerEndpoint, resolveRedirectEndpoint } from "./server/endpoints";
