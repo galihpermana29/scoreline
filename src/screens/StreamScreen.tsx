@@ -10,6 +10,7 @@ import { parseMatchRoute, sourceUrl } from "../lib/route";
 import { cachedPlaySiteDomains, isEmbedOriginAllowlisted } from "../api/source-sites";
 import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
+import { fetchMatchStreams, postStreamSwitch, type StreamOption } from "../api/streams";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
 import { downloadCalendarEvent } from "../lib/calendar";
 
@@ -337,6 +338,51 @@ export const StreamScreen = ({
   // probe is choosing, the loading overlay stands in for it.
   const embedMounted = embedMode === "page" || playerPickUrl !== null;
   const embedSrc = playerPickUrl !== null ? playerPickUrl : sourceUrl(href, origin);
+
+  // The stream-server chips for the page embed. The list is their own data
+  // (see src/api/streams.ts: /api/match/detail field-2 entries), and a chip
+  // click posts their own server-switch message into the embed's frame tree - we
+  // are the mirror's parent and the player's grandparent, but cross-origin
+  // frame walking reaches the player all the same (verified live 2026-10-17).
+  // The index of the chosen server: starts unset - the mirror picks its own
+  // default (usually its recommended channel) on mount and nothing reports
+  // that upward to us, so the chips go unhighlighted until the first pick
+  // is made from here. Their crop hides the source's own server row inside
+  // the frame, so ours is the visible selector while it is on.
+  const embedFrameRef = useRef<HTMLIFrameElement>(null);
+  const [streamOptions, setStreamOptions] = useState<readonly StreamOption[]>([]);
+  const [activeStreamId, setActiveStreamId] = useState<number | null>(null);
+  // A remount (mode switch, watchdog, retry) mounts a fresh mirror that
+  // re-picks its own default channel, so any highlight from here is stale.
+  useEffect(() => {
+    setStreamOptions([]);
+    setActiveStreamId(null);
+  }, [embedEpoch, embedMode]);
+  useEffect(() => {
+    if (!playing || embedMode !== "page" || route === null || match.sportId === undefined) return;
+    let cancelled = false;
+    fetchMatchStreams(route.matchId, match.sportId)
+      .then((options) => {
+        if (!cancelled) setStreamOptions(options);
+      })
+      .catch(() => {
+        // No chips on failure - the watch page works exactly as before; a
+        // remount, mode flip, or refresh refetches the list.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, embedMode, embedEpoch, route?.matchId, match.sportId]);
+  const chooseStream = (stream: StreamOption) => {
+    const frame = embedFrameRef.current;
+    if (frame === null) return;
+    // No confirmation channel exists back to this app (page mode): success
+    // is marked by whichever frame took the message - their own server row
+    // re-highlights from the player's reply inside the frame. A miss (frame
+    // swapped mid-walk) leaves the chip unmarked; the click simply retries.
+    if (postStreamSwitch(frame, stream)) setActiveStreamId(stream.streamId);
+  };
 
   // Fullscreen state mirrors document.fullscreenElement so the control stays
   // in sync even when the browser exits fullscreen on its own (Esc key).
@@ -707,6 +753,7 @@ export const StreamScreen = ({
               {embedMounted ? (
                 <iframe
                   key={`${embedMode}-${embedEpoch}`}
+                  ref={embedFrameRef}
                   className={`player-embed${pageZoomStyle !== undefined ? " player-embed-zoom" : ""}`}
                   style={pageZoomStyle}
                   // The crop is a viewport-relative pan: scrolling the embedded
@@ -855,6 +902,45 @@ export const StreamScreen = ({
           )}
         </motion.div>
       </div>
+
+      {/*
+          The stream-server chip row (page embed only): the source's own
+          server buttons live inside the frame - cropped out of view with
+          the zoom on - so this row is the visible, clickable selector. The
+          list and the switch contract are documented in src/api/streams.ts;
+          an empty or failed fetch simply hides the row. */}
+      {playing && embedMode === "page" && streamOptions.length > 0 ? (
+        <motion.div
+          className="watch-servers"
+          role="group"
+          aria-label="Stream servers"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
+          <span className="watch-servers-label">
+            <Icon name="player" size={14} />
+            Servers
+          </span>
+          <div className="watch-servers-list">
+            {streamOptions.map((stream) => (
+              <button
+                key={stream.streamId}
+                className={`watch-server${activeStreamId === stream.streamId ? " watch-server-on" : ""}`}
+                onClick={() => chooseStream(stream)}
+                aria-pressed={activeStreamId === stream.streamId}
+                title={
+                  activeStreamId === stream.streamId
+                    ? `Stream server ${stream.name}`
+                    : `Switch the live stream to server ${stream.name}`
+                }
+              >
+                {stream.name}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      ) : null}
 
       <motion.div
         className="watch-body"

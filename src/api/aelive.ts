@@ -14,7 +14,13 @@ import { FEED_PATH, resetApiHosts, resolveApiHosts } from "./source-sites";
  * Responses are binary protobuf (`PBMatchLiveResp`) with no published schema:
  * field numbers below were reconstructed from wire-format analysis.
  */
-const LANGUAGE = 8;
+
+/**
+ * Localisation asked of every data-host endpoint (free-text names come back
+ * partly Italian on their side, 2026-10-17). Exported for streams.ts, which
+ * rides the same endpoints as the feed.
+ */
+export const LANGUAGE = 8;
 
 /**
  * sportType=0 is a curated popular set that hides several live sports, so the
@@ -62,14 +68,19 @@ export const sportLabel = (sportId: number): string =>
  */
 let preferredHosts: readonly string[] | null = null;
 
-const fetchPayload = async (sportType: number): Promise<Uint8Array> => {
+/**
+ * Raw protobuf bytes from the rotating data-host family, with the sticky
+ * host preference and last-resort re-discovery that the live feed rides.
+ * The stream-list reader in streams.ts fetches the same family (verified
+ * live 2026-10-17: /api/match/detail answers on the feed's hosts with the
+ * same open CORS), so a data-host rotation heals both without code changes.
+ */
+export const fetchDataHostBytes = async (path: string, query: string): Promise<Uint8Array> => {
   const hosts = preferredHosts ?? (await resolveApiHosts());
   let lastError: unknown = null;
   for (const host of hosts) {
     try {
-      const response = await fetch(
-        `https://${host}${FEED_PATH}?sportType=${sportType}&language=${LANGUAGE}&stream=false`,
-      );
+      const response = await fetch(`https://${host}${path}?${query}`);
       if (!response.ok) throw new Error(`Live feed returned ${response.status}.`);
       // The host family also carries non-feed hosts (the apis-live* pair
       // answers a tiny text marker, verified 2026-10-16), so the content type
@@ -90,8 +101,12 @@ const fetchPayload = async (sportType: number): Promise<Uint8Array> => {
   // so the next poll re-discovers the family instead of retrying dead hosts.
   preferredHosts = null;
   resetApiHosts();
-  throw lastError instanceof Error ? lastError : new Error("No live-feed host responded.");
+  throw lastError instanceof Error ? lastError : new Error("No data host responded.");
 };
+
+/** Live matches for one sport: one feed request, no spacing needed. */
+const fetchPayload = async (sportType: number): Promise<Uint8Array> =>
+  fetchDataHostBytes(FEED_PATH, `sportType=${sportType}&language=${LANGUAGE}&stream=false`);
 
 /**
  * Field 4 status codes, decoded against the source's own web bundle

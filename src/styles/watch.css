@@ -153,6 +153,67 @@
   padding-top: 20px;
 }
 
+/* The stream-server chip row for the page embed: the source's own server
+   buttons live inside the cropped frame, so this is the visible selector.
+   Chips follow the toolbar-button recipe (fill pills, scale-on-press) with
+   the accent pair marking the chosen server - their own row inside the
+   frame re-highlights from the player's reply and stays the source of
+   truth; ours marks the last choice made from here. */
+.watch-servers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  max-width: 1180px;
+  margin: 14px auto 0;
+}
+
+.watch-servers-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.watch-servers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.watch-server {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    transform 150ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .watch-server:hover {
+    background: var(--fill-strong);
+  }
+}
+
+.watch-server:active {
+  transform: scale(0.97);
+}
+
+.watch-server-on {
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+}
+
 .watch-headline {
   display: flex;
   flex-wrap: wrap;
