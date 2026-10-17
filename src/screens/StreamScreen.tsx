@@ -11,6 +11,7 @@ import { cachedPlaySiteDomains, isEmbedOriginAllowlisted } from "../api/source-s
 import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { fetchMatchStreams, postStreamSwitch, type StreamOption } from "../api/streams";
+import { bestMeasured, compareQuality, qualityBadge, streamQuality } from "../domain/streamQuality";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
 import { downloadCalendarEvent } from "../lib/calendar";
 
@@ -352,20 +353,29 @@ export const StreamScreen = ({
   // click posts their own server-switch message into the embed's frame tree - we
   // are the mirror's parent and the player's grandparent, but cross-origin
   // frame walking reaches the player all the same (verified live 2026-10-17).
-  // The index of the chosen server: starts unset - the mirror picks its own
-  // default (usually its recommended channel) on mount and nothing reports
-  // that upward to us, so the chips go unhighlighted until the first pick
-  // is made from here. Their crop hides the source's own server row inside
-  // the frame, so ours is the visible selector while it is on.
+  // The index of the chosen server: starts unset, and the mirror picks its own
+  // default (the first entry of its list) on mount - nothing reports that
+  // upward to us. Two things can light a chip from here: a visitor pick, and
+  // the auto-start on the best measured server (docs/stream-quality.md),
+  // which only fires when it provably beats their default. Their crop hides
+  // the source's own server row inside the frame, so ours is the visible
+  // selector while it is on.
   const embedFrameRef = useRef<HTMLIFrameElement>(null);
   const [streamOptions, setStreamOptions] = useState<readonly StreamOption[]>([]);
   const [activeStreamId, setActiveStreamId] = useState<number | null>(null);
+  // True once the visitor picked a server themselves on this mount; the
+  // auto-start below never overrides a choice it knows about.
+  const visitorPickedRef = useRef(false);
   // A remount (mode switch, watchdog, retry) mounts a fresh mirror that
   // re-picks its own default channel, so any highlight from here is stale.
+  // `playing` belongs in these deps too (the stop/play cycle unmounts and
+  // remounts the same embedEpoch's frame): before it was missing here, a
+  // stop/play round trip kept the old highlight and the reset never ran.
   useEffect(() => {
     setStreamOptions([]);
     setActiveStreamId(null);
-  }, [embedEpoch, embedMode]);
+    visitorPickedRef.current = false;
+  }, [embedEpoch, embedMode, playing]);
   useEffect(() => {
     if (!playing || embedMode !== "page" || route === null || match.sportId === undefined) return;
     let cancelled = false;
@@ -382,15 +392,26 @@ export const StreamScreen = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, embedMode, embedEpoch, route?.matchId, match.sportId]);
-  const chooseStream = (stream: StreamOption) => {
+  // Which chips carry a measured quality badge, and which is the best of
+  // them (`src/domain/streamQuality.ts` - measured facts, never a guess).
+  const streamQualities = streamOptions.map((stream) => streamQuality(stream.name));
+  const bestKnown = bestMeasured(streamOptions);
+  const chooseStream = (stream: StreamOption, picked: "visitor" | "auto" = "visitor") => {
     const frame = embedFrameRef.current;
-    if (frame === null) return;
+    if (frame === null) return false;
     // No confirmation channel exists back to this app (page mode): success
     // is marked by whichever frame took the message - their own server row
     // re-highlights from the player's reply inside the frame. A miss (frame
     // swapped mid-walk) leaves the chip unmarked; the click simply retries.
-    if (postStreamSwitch(frame, stream)) setActiveStreamId(stream.streamId);
+    if (postStreamSwitch(frame, stream)) {
+      if (picked === "visitor") visitorPickedRef.current = true;
+      setActiveStreamId(stream.streamId);
+      return true;
+    }
+    return false;
   };
+  // The auto-start on the best known server lives further down, after the
+  // zoom-kick state it waits on (`embedSettled`, below).
 
   // Fullscreen state mirrors document.fullscreenElement so the control stays
   // in sync even when the browser exits fullscreen on its own (Esc key).
@@ -473,6 +494,41 @@ export const StreamScreen = ({
     const timer = window.setTimeout(() => setZoomKickDone(true), PAGE_EMBED_KICK_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [embedLoads]);
+  // Start on the best known server, once per mount
+  // (docs/stream-quality.md part 3). Quality is fixed per server and their
+  // default pick (the first entry) is not their best one, so when we can
+  // prove a better start we make it. The gate stays deliberately strict:
+  // - page mode, playing, after the server list has loaded and the embed
+  //   has settled - the zoom kick landed, or at least one load event when
+  //   the crop is off - because the mirror's nested player exists then;
+  // - never after the visitor picked a server on this mount;
+  // - only a provable improvement: the first entry (their default) has a
+  //   measured quality and the best measured is strictly better. Anything
+  //   unknown stays untouched - it might be good.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    autoStartedRef.current = false;
+  }, [embedEpoch, embedMode, playing]);
+  const embedSettled = zoomCropWanted ? zoomKickDone : embedLoads > 0;
+  useEffect(() => {
+    if (autoStartedRef.current || visitorPickedRef.current || activeStreamId !== null) return;
+    if (!playing || embedMode !== "page" || route === null) return;
+    if (streamOptions.length === 0 || !embedSettled) return;
+    const firstOption = streamOptions[0];
+    if (firstOption === undefined) return;
+    const first = streamQuality(firstOption.name);
+    const best = bestKnown;
+    if (first === null || best === null) return;
+    if (compareQuality(best.quality, first) <= 0) return;
+    // Highlight the chosen chip so the visitor sees what happened and can
+    // pick another any time; their own server row inside the frame
+    // re-syncs from the player's reply.
+    autoStartedRef.current = chooseStream(best.stream, "auto");
+    // `embedLoads` re-runs this on every fresh document in the frame chain:
+    // a switch posted to the entry page (no child frames yet) is not
+    // delivered, and the attempt must re-arm when the mirror lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, embedMode, embedSettled, embedLoads, route?.matchId, streamOptions, activeStreamId, bestKnown]);
   const toggleZoom = () => {
     setZoom((current) => {
       try {
@@ -985,21 +1041,37 @@ export const StreamScreen = ({
             Servers
           </span>
           <div className="watch-servers-list">
-            {streamOptions.map((stream) => (
-              <button
-                key={stream.streamId}
-                className={`watch-server${activeStreamId === stream.streamId ? " watch-server-on" : ""}`}
-                onClick={() => chooseStream(stream)}
-                aria-pressed={activeStreamId === stream.streamId}
-                title={
-                  activeStreamId === stream.streamId
-                    ? `Stream server ${stream.name}`
-                    : `Switch the live stream to server ${stream.name}`
-                }
-              >
-                {stream.name}
-              </button>
-            ))}
+            {streamOptions.map((stream, index) => {
+              const quality = streamQualities[index];
+              const isBestKnown = bestKnown?.stream === stream;
+              const baseTitle =
+                activeStreamId === stream.streamId
+                  ? `Stream server ${stream.name}`
+                  : `Switch the live stream to server ${stream.name}`;
+              // The badge is a measured fact (src/domain/streamQuality.ts);
+              // unknown servers carry none and never claim one.
+              const title = quality
+                ? `${baseTitle} - measured ${qualityBadge(quality)}${isBestKnown ? ", best measured server" : ""}`
+                : baseTitle;
+              return (
+                <button
+                  key={stream.streamId}
+                  className={`watch-server${activeStreamId === stream.streamId ? " watch-server-on" : ""}`}
+                  onClick={() => chooseStream(stream)}
+                  aria-pressed={activeStreamId === stream.streamId}
+                  title={title}
+                >
+                  {stream.name}
+                  {quality ? (
+                    <span
+                      className={`watch-server-quality${isBestKnown ? " watch-server-quality-best" : ""}`}
+                    >
+                      {qualityBadge(quality)}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </motion.div>
       ) : null}

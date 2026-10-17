@@ -214,6 +214,43 @@
   color: var(--accent-fg);
 }
 
+/* Measured-quality badge inside a server chip (the fact table lives in
+   src/domain/streamQuality.ts). Quiet by design: same size family as the
+   chip text, one step dimmer; the best measured server of the list reads
+   one step stronger still. Solid colors only - no backdrop-filter
+   anywhere (the app-wide no-blur rule, TV performance). */
+.watch-server {
+  display: inline-flex;
+  align-items: center;
+}
+
+.watch-server-quality {
+  margin-left: 7px;
+  color: var(--label-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.watch-server-quality-best {
+  color: var(--label-2);
+  font-weight: 700;
+}
+
+/* The active chip inverts its colors (accent fill/foreground), so the
+   badge inherits the chip text color and dims it - it must read on the
+   active chip too, where a token like --label-3 can wash into the fill. */
+.watch-server-on .watch-server-quality {
+  color: inherit;
+  opacity: 0.55;
+}
+
+.watch-server-on .watch-server-quality-best {
+  color: inherit;
+  opacity: 0.8;
+}
+
 .watch-headline {
   display: flex;
   flex-wrap: wrap;

@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>quality harness</title>
+<style>
+  html, body { margin: 0; background: #000; }
+  #shell { position: relative; overflow: hidden; background: #111; }
+  iframe { border: 0; display: block; }
+</style>
+</head>
+<body>
+<div id="shell"></div>
+<script>
+  // ?src=<match page or player url>&mode=crop|wide|zoom|player&w=<shell width>
+  const q = new URLSearchParams(location.search);
+  const src = q.get("src");
+  const mode = q.get("mode") || "crop";
+  const w = Number(q.get("w") || 1600);
+  const h = Math.round((w * 9) / 16);
+  const shell = document.getElementById("shell");
+  shell.style.width = w + "px";
+  shell.style.height = h + "px";
+  const frame = document.createElement("iframe");
+  frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+  frame.setAttribute("allow", "autoplay; fullscreen; encrypted-media; picture-in-picture");
+  frame.setAttribute("referrerpolicy", "no-referrer-when-downgrade");
+  const VIDEO = { x: 0, y: 80, w: 750, h: (750 * 9) / 16 };
+  const scale = Math.max(w / VIDEO.w, h / VIDEO.h);
+  if (mode === "crop") {
+    // Same geometry as StreamScreen's page-embed crop.
+    const tx = w / 2 - (VIDEO.x + VIDEO.w / 2) * scale;
+    const ty = h / 2 - (VIDEO.y + VIDEO.h / 2) * scale;
+    Object.assign(frame.style, { width: "750px", height: "10000px", transformOrigin: "0 0", transform: `translate(${tx}px, ${ty}px) scale(${scale})` });
+  } else if (mode === "zoom") {
+    // Candidate: CSS zoom instead of transform scale.
+    const tx = w / 2 - (VIDEO.x + VIDEO.w / 2) * scale;
+    const ty = h / 2 - (VIDEO.y + VIDEO.h / 2) * scale;
+    Object.assign(frame.style, { width: "750px", height: "10000px", zoom: String(scale), position: "absolute", left: tx / scale + "px", top: ty / scale + "px" });
+  } else {
+    // wide: their page at full shell size, unscaled; player: bare player.html filling the shell.
+    Object.assign(frame.style, { width: w + "px", height: h + "px" });
+  }
+  frame.src = src;
+  shell.appendChild(frame);
+  window.__switch = (si) => {
+    const mirror = frame.contentWindow;
+    for (let i = 0; i < mirror.length; i++) mirror.frames[i].postMessage({ msgEventType: "FROM_PARENT_SITE", val: { evType: 104, _si: si } }, "*");
+    return mirror.length;
+  };
+</script>
+</body>
+</html>
