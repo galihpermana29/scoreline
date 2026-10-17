@@ -10,8 +10,11 @@ import { num, parseProto, sub, subs, text } from "../../shared/protobuf";
  * The list: their `/api/match/detail` (same rotating data hosts as the live
  * feed, same open CORS, same ignored `sfver` placeholder segment) answers a
  * protobuf envelope whose data block (root field 10) carries one field-2
- * entry per stream channel - {1: streamId, 2: sportType, 3: label, 8:
- * siteType, 50: matchId}. For the verified fixture the eleven entries decoded
+ * entry per stream channel - {1: streamId, 2: sportType, 3: label, 9:
+ * siteType, 50: matchId} plus a second site-ish code at field 8 that is NOT
+ * the switch's siteType (verified live 2026-10-17: their own switch fetches
+ * stream/detail with siteType=2001 - field 9 - and the field-8 value gets
+ * "Stream Not Found"). For the verified fixture the eleven entries decoded
  * in order to exactly the labels their own mirror page renders below the
  * video ("1X EN", "TD EN", "Fubo US", "Movistar2", "Now IT", "Cal FR",
  * "TD Arabic", "DZ PT", "Mo TH", "TyR", "8X VN"), so this is the same list
@@ -72,7 +75,13 @@ export const fetchMatchStreams = async (matchId: number, sportType: number): Pro
         streamId,
         sportType: num(entry, 2) ?? sportType,
         name,
-        siteType: num(entry, 8),
+        // Field 9, NOT field 8: the entry carries two site-ish codes, and
+        // their own switch posts field 9's value (e.g. 2001) as `siteType` -
+        // verified live 2026-10-17: `/api/stream/detail?...&siteType=2001`
+        // answers the encrypted stream blob while `siteType=2` (field 8)
+        // answers "Stream Not Found", which reads as an endless spinner
+        // because their player only logs the failed refetch.
+        siteType: num(entry, 9),
       },
     ];
   });

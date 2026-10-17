@@ -170,6 +170,10 @@ export const App = () => {
   useEffect(() => {
     if (watching === null) return;
     const onKey = (event: KeyboardEvent) => {
+      // The watch screen's faux fullscreen (no-API phones and refused
+      // requests) has no browser-level Esc handling, so it owns the first
+      // Esc itself - the layer only closes once the shell has shrunk back.
+      if (document.fullscreenElement === null && document.querySelector(".player-shell-fs") !== null) return;
       if (event.key === "Escape" && document.fullscreenElement === null && selected === null) exitWatch();
     };
     window.addEventListener("keydown", onKey);
@@ -203,7 +207,27 @@ export const App = () => {
     navigate(href, { autoplay: true });
   }, []);
 
-  const streamMatch = watching === null ? null : (feed.matches.find((candidate) => candidate.id === `ae-${watching.match.matchId}`) ?? null);
+  const streamMatchLive =
+    watching === null ? null : (feed.matches.find((candidate) => candidate.id === `ae-${watching.match.matchId}`) ?? null);
+  // The live feed flaps one pass at a time: a transient "no data this tick"
+  // (per-sport 499s with an empty body) parses as zero rows, the watched row
+  // leaves `feed.matches` for exactly one render, and a StreamScreen mounted
+  // on `key={streamMatch.id}` would unmount and remount - resetting `playing`
+  // (deep-link arrivals carry no autoplay to recover it) and reloading the
+  // embed mid-watch. Latch the last good row for the current route so a
+  // mounted screen survives the flap; the latch is per-href, so a genuinely
+  // absent match still renders StreamUnavailable on arrival, and any fresh
+  // poll row replaces the latch the moment it exists again.
+  const lastStreamMatch = useRef<{ href: string; match: Match } | null>(null);
+  if (watching !== null && streamMatchLive !== null) {
+    lastStreamMatch.current = { href: watching.href, match: streamMatchLive };
+  }
+  const streamMatch =
+    watching === null
+      ? null
+      : lastStreamMatch.current !== null && lastStreamMatch.current.href === watching.href
+        ? lastStreamMatch.current.match
+        : streamMatchLive;
   const related = useMemo(
     () =>
       streamMatch === null
