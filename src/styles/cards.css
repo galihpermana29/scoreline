@@ -223,6 +223,79 @@
   transform: translate(-50%, -50%) scale(1);
 }
 
+/* ---------- flat CSS thumbnails ---------- */
+
+/* The solid colour card art (see cardart.ts). The card is its own container,
+   so every size is a fraction of the card's own width; the plain-px fallback
+   lines serve browsers without container units. */
+.art-thumb {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12%;
+  background: var(--thumb-bg, #1f2933);
+  text-align: center;
+}
+
+/* The accent rule some club themes carry between the two lines
+   (Liverpool, PSG, Bayern, United): 1/16 of the card wide, as drawn on
+   the reference cards. */
+.thumb-bar {
+  flex: none;
+  width: 18px;
+  width: 6.25cqw;
+  height: 2px;
+  height: max(2px, 0.36cqw);
+  border-radius: 1px;
+}
+
+.thumb-big {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--thumb-ink, #fff);
+  /* Default wrapping: breaks at spaces only. A word wider than the card
+     (scored against the tier cutoffs above) is rare; the clamp clips it
+     rather than letting a mid-word break wreck the wordmark. */
+}
+
+/* The ceiling tier (user-set, 2026-10-17): never bigger than the
+   MANCHESTER CITY card; the stepped-down tier is for long lines only. */
+.thumb-md {
+  font-size: 28px;
+  font-size: 10.5cqw;
+}
+
+.thumb-sm {
+  font-size: 22px;
+  font-size: 8.2cqw;
+  line-height: 1.06;
+}
+
+.thumb-small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 11px;
+  font-size: 4.6cqw;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--thumb-sub, rgba(255, 255, 255, 0.88));
+  overflow-wrap: anywhere;
+}
+
 .card-shine {
   position: absolute;
   inset: 0;

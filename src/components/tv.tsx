@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { otherThumb } from "../domain/artwork";
+import { thumbPlan } from "../domain/cardart";
 import { matchLabel, type League, type Match } from "../domain/match";
 import { canWatch } from "../lib/route";
 import { formatShortDate, formatTime, relativeDayLabel } from "../lib/format";
@@ -121,6 +122,26 @@ export const MatchArtwork = ({
   />
 );
 
+/**
+ * The flat CSS thumbnail (the "ARSENAL / PREMIER LEAGUE" style): one solid
+ * colour field, a big identity line, a small tracked context line. Sizing is
+ * container-relative (`cqw` of the card itself, with px fallbacks in the CSS
+ * for browsers without container units), so the same component fits every
+ * card width the shelves use. Overlays (status badge, score pill, play) sit
+ * on top of this exactly as they do on photos.
+ */
+export const MatchThumb = ({ match }: { match: Match }) => {
+  const { theme, big, small, tier } = thumbPlan(match);
+  const colors = { "--thumb-bg": theme.bg, "--thumb-ink": theme.ink, "--thumb-sub": theme.sub } as CSSProperties;
+  return (
+    <div className="art art-thumb" style={colors} aria-hidden>
+      <span className={`thumb-big thumb-${tier}`}>{big}</span>
+      {theme.bar ? <span className="thumb-bar" style={{ background: theme.bar }} /> : null}
+      <span className="thumb-small">{small}</span>
+    </div>
+  );
+};
+
 // ---------- tilt (tvOS parallax focus) ----------
 
 const finePointer = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -180,7 +201,7 @@ export const MatchCard = ({
         aria-label={`${watchable ? "Watch" : "Open"} ${matchLabel(match)}, ${match.league.name}`}
       >
         <motion.span className="card-surface" layoutId={layoutId} transition={MORPH_SPRING} style={{ borderRadius: 12 }}>
-          <MatchArtwork match={match} size="medium" />
+          <MatchThumb match={match} />
           <span className="card-top">
             <StatusBadge match={match} />
           </span>
