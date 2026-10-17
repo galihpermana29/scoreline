@@ -120,6 +120,14 @@ export const cachedPlayerHosts = (): readonly string[] | null =>
 export const cachedPlaySiteDomains = (): readonly string[] | null =>
   readCache<string[]>(PLAY_SITE_CACHE_KEY, (age) => age < CACHE_TTL_MS);
 
+/**
+ * The cached quiet-mirror origins if still fresh, null when this browser
+ * has not decoded params yet. A fresh empty list means no brand is currently
+ * ad-free, which is different from "not resolved".
+ */
+export const cachedNoAdMirrorOrigins = (): readonly string[] | null =>
+  readCache<string[]>(NO_AD_MIRRORS_CACHE_KEY, (age) => age < CACHE_TTL_MS);
+
 const staleEntryOrigin = (): string | null => readCache<string>(ENTRY_CACHE_KEY, () => true);
 
 /**
@@ -256,6 +264,13 @@ const PARAMS_PATH = "/api/common/params";
 const PLAYER_HOSTS_CACHE_KEY = "scoreline:player-hosts";
 /** Same TTL and lifecycle as the player hosts; written by the same decode. */
 const PLAY_SITE_CACHE_KEY = "scoreline:play-site-domains";
+/**
+ * Mirror origins whose `common:ad` brand object is empty. Written by the
+ * same params decode as the player hosts. An empty list is a real answer
+ * (every brand currently carries creatives), so callers must not treat it
+ * as a cache miss.
+ */
+const NO_AD_MIRRORS_CACHE_KEY = "scoreline:no-ad-mirrors";
 
 /**
  * Unscrambles the params API's rotation: every code point in 33..126 moves
@@ -288,6 +303,15 @@ const SHIFT_CANDIDATES: readonly number[] = [
 /** Key-matching for the player-host list, tolerant of naming drift. */
 const isPlayerDomainsKey = (key: string): boolean => /iframe[_-]?player[_-]?domains/i.test(key);
 
+/** Mirror fronts, a different family from the bare player hosts. */
+const isMirrorDomainsKey = (key: string): boolean => /^g[_-]?player[_-]?domains$/i.test(key);
+
+/**
+ * The web banner config. `common:ad:app` and `common:ad:app-sdk` are TV and
+ * app interstitials and must not match; the anchored end keeps them out.
+ */
+const isCommonAdKey = (key: string): boolean => /^common[:_-]ad$/i.test(key);
+
 /**
  * Key-matching for the player's embed allowlist. The player page's own JS
  * checks its referrer's domain against exactly this list (verified live
@@ -297,31 +321,110 @@ const isPlayerDomainsKey = (key: string): boolean => /iframe[_-]?player[_-]?doma
 const isPlaySiteDomainsKey = (key: string): boolean => /^play[_-]?site[_-]?domains$/i.test(key);
 
 /**
- * Collects every player-domain and play-site-domain entry from anywhere in
- * the decoded params object. The operator files each brand's config under its
- * own digit key (`snd`, `trd`, `foth`, ...) and nests some values as JSON
- * strings one level deep, and which key belongs to which brand has already
- * shifted once during observation - so nothing here keys off the brand
- * layout. The whole tree is walked and every domain found anywhere is
- * unioned; a re-shuffled params response keeps resolving as long as the key
- * names survive. Depth is capped because the nested-JSON walk is recursive.
+ * Collects player hosts, the play-site allowlist, and quiet mirror origins
+ * from anywhere in the decoded params object. Player hosts and the allowlist
+ * are unioned from every matching key: the operator nests those lists under
+ * brand digits and as JSON strings, and which digit holds them has already
+ * shifted once, so those two lists do not care about brand. Quiet mirrors
+ * do: a brand is usable only when `g_player_domains[brand]` has origins AND
+ * `common:ad[brand]` is an empty object. Renaming a brand is fine; filling
+ * its ad object drops it. Depth is capped because the nested-JSON walk is
+ * recursive.
  */
-type DomainLists = { playerHosts: string[]; playSiteDomains: string[] };
+type AdEmptiness = "empty" | "filled";
 
-const collectDomainLists = (node: unknown, into: DomainLists, depth: number): void => {
+type DomainLists = {
+  playerHosts: string[];
+  playSiteDomains: string[];
+  /** Origins of mirror brands whose ad object is an empty object. */
+  noAdMirrorOrigins: string[];
+};
+
+type MirrorScan = {
+  hostsByBrand: Map<string, string[]>;
+  adByBrand: Map<string, AdEmptiness>;
+};
+
+const parseStructured = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  const first = value.charAt(0);
+  if (first !== "{" && first !== "[") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+/** An origin, or null when the value is a placeholder (`/`) or not a host. */
+const mirrorOrigin = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed === "/") return null;
+  try {
+    const url = trimmed.includes("://") ? new URL(trimmed) : new URL(`https://${trimmed}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.hostname === "") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+};
+
+const noteMirrorDomains = (value: unknown, scan: MirrorScan): void => {
+  const record = parseStructured(value);
+  if (record === null || typeof record !== "object" || Array.isArray(record)) return;
+  for (const [brand, hosts] of Object.entries(record)) {
+    if (!Array.isArray(hosts)) continue;
+    const list = scan.hostsByBrand.get(brand) ?? [];
+    for (const host of hosts) {
+      if (typeof host !== "string") continue;
+      const origin = mirrorOrigin(host);
+      if (origin !== null) list.push(origin);
+    }
+    if (list.length > 0) scan.hostsByBrand.set(brand, list);
+  }
+};
+
+/**
+ * A brand is quiet only when its ad value is an empty object. Any key at
+ * all means the operator has creatives for it, even if a show-rule would
+ * hide them for some visitors. `digit` is the ad-network catalog, not a
+ * mirror brand.
+ */
+const noteAdConfig = (value: unknown, scan: MirrorScan): void => {
+  const record = parseStructured(value);
+  if (record === null || typeof record !== "object" || Array.isArray(record)) return;
+  for (const [brand, config] of Object.entries(record)) {
+    if (brand === "digit") continue;
+    if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+    if (Object.keys(config).length === 0) {
+      if (scan.adByBrand.get(brand) !== "filled") scan.adByBrand.set(brand, "empty");
+    } else {
+      scan.adByBrand.set(brand, "filled");
+    }
+  }
+};
+
+const quietOrigins = (scan: MirrorScan): string[] => {
+  const origins: string[] = [];
+  for (const [brand, state] of scan.adByBrand) {
+    if (state !== "empty") continue;
+    const hosts = scan.hostsByBrand.get(brand);
+    if (hosts !== undefined) origins.push(...hosts);
+  }
+  return [...new Set(origins)].sort();
+};
+
+const collectDomainLists = (node: unknown, into: DomainLists, scan: MirrorScan, depth: number): void => {
   if (depth > 4) return;
   if (typeof node === "string") {
-    const first = node.charAt(0);
-    if (first !== "{" && first !== "[") return;
-    try {
-      collectDomainLists(JSON.parse(node), into, depth + 1);
-    } catch {
-      // An ordinary string that merely looks structured: nothing to take.
-    }
+    const parsed = parseStructured(node);
+    if (parsed === node) return;
+    collectDomainLists(parsed, into, scan, depth + 1);
     return;
   }
   if (Array.isArray(node)) {
-    for (const item of node) collectDomainLists(item, into, depth);
+    for (const item of node) collectDomainLists(item, into, scan, depth);
     return;
   }
   if (node === null || typeof node !== "object") return;
@@ -330,8 +433,14 @@ const collectDomainLists = (node: unknown, into: DomainLists, depth: number): vo
       for (const host of value) if (typeof host === "string") into.playerHosts.push(host);
     } else if (isPlaySiteDomainsKey(key) && Array.isArray(value)) {
       for (const host of value) if (typeof host === "string") into.playSiteDomains.push(host);
+    } else if (isMirrorDomainsKey(key)) {
+      noteMirrorDomains(value, scan);
+      collectDomainLists(value, into, scan, depth);
+    } else if (isCommonAdKey(key)) {
+      noteAdConfig(value, scan);
+      collectDomainLists(value, into, scan, depth);
     } else {
-      collectDomainLists(value, into, depth);
+      collectDomainLists(value, into, scan, depth);
     }
   }
 };
@@ -355,16 +464,44 @@ const decodeDomainLists = (text: string): DomainLists | null => {
     } catch {
       continue;
     }
-    const found: DomainLists = { playerHosts: [], playSiteDomains: [] };
-    collectDomainLists(params, found, 0);
+    const found: DomainLists = { playerHosts: [], playSiteDomains: [], noAdMirrorOrigins: [] };
+    const scan: MirrorScan = { hostsByBrand: new Map(), adByBrand: new Map() };
+    collectDomainLists(params, found, scan, 0);
     if (found.playerHosts.length > 0) {
       return {
         playerHosts: [...new Set(found.playerHosts)],
         playSiteDomains: [...new Set(found.playSiteDomains)],
+        noAdMirrorOrigins: quietOrigins(scan),
       };
     }
   }
   return null;
+};
+
+/** One params fetch shared by the player-host and quiet-mirror resolvers. */
+let paramsFetch: Promise<DomainLists | null> | null = null;
+
+const fetchParamsLists = (fresh: boolean): Promise<DomainLists | null> => {
+  paramsFetch ??= (async () => {
+    for (const apiHost of await resolveApiHosts(fresh)) {
+      try {
+        const response = await fetch(`https://${apiHost}${PARAMS_PATH}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Params answered ${response.status}.`);
+        const lists = decodeDomainLists(await response.text());
+        if (lists === null) throw new Error("Params no longer decode to any player host.");
+        writeCache(PLAYER_HOSTS_CACHE_KEY, lists.playerHosts);
+        writeCache(PLAY_SITE_CACHE_KEY, lists.playSiteDomains);
+        writeCache(NO_AD_MIRRORS_CACHE_KEY, lists.noAdMirrorOrigins);
+        return lists;
+      } catch {
+        // Host dead, bot-stubbed, or the response shape changed: next host.
+      }
+    }
+    return null;
+  })().finally(() => {
+    paramsFetch = null;
+  });
+  return paramsFetch;
 };
 
 /**
@@ -379,26 +516,37 @@ export const resolvePlayerHosts = async (fresh = false): Promise<readonly string
     const cached = readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, (age) => age < CACHE_TTL_MS);
     if (cached !== null && cached.length > 0) return cached;
   }
-  for (const apiHost of await resolveApiHosts(fresh)) {
-    try {
-      const response = await fetch(`https://${apiHost}${PARAMS_PATH}`, { cache: "no-store" });
-      if (!response.ok) throw new Error(`Params answered ${response.status}.`);
-      const lists = decodeDomainLists(await response.text());
-      if (lists === null) throw new Error("Params no longer decode to any player host.");
-      writeCache(PLAYER_HOSTS_CACHE_KEY, lists.playerHosts);
-      writeCache(PLAY_SITE_CACHE_KEY, lists.playSiteDomains);
-      return lists.playerHosts;
-    } catch {
-      // Host dead, bot-stubbed, or the response shape changed: next host.
-    }
-  }
+  const lists = await fetchParamsLists(fresh);
+  if (lists !== null && lists.playerHosts.length > 0) return lists.playerHosts;
   const stale = readCache<string[]>(PLAYER_HOSTS_CACHE_KEY, () => true);
   if (stale !== null && stale.length > 0) return stale;
   return (await loadServerDefaults()).playerHosts;
 };
 
+/**
+ * Mirror origins whose banner config is an empty object, from the same
+ * params decode as the player hosts. Never throws. A fresh empty list is
+ * returned as-is: the operator filled every brand, and the caller should
+ * use the entry page. A failed fetch falls back to the stale list, which
+ * may name a brand that has since gained creatives - the embed probe and
+ * the next successful decode are what drop it.
+ */
+export const resolveNoAdMirrorOrigins = async (fresh = false): Promise<readonly string[]> => {
+  if (!fresh) {
+    const cached = readCache<string[]>(NO_AD_MIRRORS_CACHE_KEY, (age) => age < CACHE_TTL_MS);
+    if (cached !== null) return cached;
+  }
+  const lists = await fetchParamsLists(fresh);
+  if (lists !== null) return lists.noAdMirrorOrigins;
+  const stale = readCache<string[]>(NO_AD_MIRRORS_CACHE_KEY, () => true);
+  return stale ?? [];
+};
+
 /** Drops the player-host cache so the next resolution re-reads params. */
-export const resetPlayerHosts = (): void => clearCache(PLAYER_HOSTS_CACHE_KEY);
+export const resetPlayerHosts = (): void => {
+  clearCache(PLAYER_HOSTS_CACHE_KEY);
+  clearCache(NO_AD_MIRRORS_CACHE_KEY);
+};
 
 /**
  * Whether the player page's own JS would accept an embed framed by this

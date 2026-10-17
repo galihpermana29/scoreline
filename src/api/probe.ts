@@ -17,7 +17,7 @@
  */
 
 export type PlayerProbe =
-  | { kind: "reachable"; status: number }
+  | { kind: "reachable"; status: number; finalUrl: string | null }
   | { kind: "refused"; status: number }
   | { kind: "unreachable"; status: number }
   | { kind: "unknown" };
@@ -42,11 +42,13 @@ export const probePlayerUrl = async (url: string): Promise<PlayerProbe> => {
       // unreachable from this machine as the iframe would find it.
       return response.status === 502 ? { kind: "unreachable", status: 502 } : { kind: "unknown" };
     }
-    const body = (await response.json().catch(() => null)) as Partial<{ status: number }> | null;
+    const body = (await response.json().catch(() => null)) as Partial<{ status: number; url: string }> | null;
     if (body === null || typeof body.status !== "number") {
       return { kind: "unknown" };
     }
-    if (body.status >= 200 && body.status < 300) return { kind: "reachable", status: body.status };
+    if (body.status >= 200 && body.status < 300) {
+      return { kind: "reachable", status: body.status, finalUrl: typeof body.url === "string" ? body.url : null };
+    }
     if (body.status === 401 || body.status === 403) return { kind: "refused", status: body.status };
     return { kind: "unreachable", status: body.status };
   } catch {
