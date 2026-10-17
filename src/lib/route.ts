@@ -1,30 +1,5 @@
+import { matchPath } from "../../shared/route";
 import type { Match } from "../domain/match";
-
-/**
- * Static sportId -> path segment map, mirroring the feed's own routing scheme
- * (1 football, 2 basketball, 3 tennis, 4 baseball, 11 hockey, 12 badminton,
- * 13 volleyball, 16 handball, 90 everything else). Extensions beyond the
- * verified set use the obvious english sport name so simulated paths read well.
- */
-const SPORT_PATH: Record<number, string> = {
-  1: "football",
-  2: "basketball",
-  3: "tennis",
-  4: "baseball",
-  6: "cricket",
-  8: "rugby",
-  9: "american-football",
-  10: "aussie-rules",
-  11: "hockey",
-  12: "badminton",
-  13: "volleyball",
-  14: "combat-sports",
-  16: "handball",
-  90: "others",
-};
-
-/** The feed is consumed in Indonesian, matching the source site's default. */
-const ROUTE_LANG = "id";
 
 /**
  * The real site's entry origin is not hardcoded anywhere: the operator
@@ -52,16 +27,12 @@ const stripId = (match: Match): number => {
 };
 
 /**
- * Build the internal simulated player path for a match:
- * /{lang}/{sport}/{competitionSlug}-{matchId}/{matchSlug}.html
- * Returns null when the feed didn't ship the SEO slugs for this match.
+ * The internal simulated player path for a match (see matchPath in
+ * shared/route.ts). Returns null when the feed didn't ship the SEO slugs.
  */
 export const matchHref = (match: Match): string | null => {
   if (match.sportId === undefined || !match.slugs) return null;
-  const sportPath = SPORT_PATH[match.sportId] ?? "others";
-  const id = stripId(match);
-  if (id === 0) return null;
-  return `/${ROUTE_LANG}/${sportPath}/${match.slugs.competition}-${id}/${match.slugs.match}.html`;
+  return matchPath(match.sportId, match.slugs, stripId(match));
 };
 
 /** True when a match has everything needed to open the simulated stream. */

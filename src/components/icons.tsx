@@ -36,6 +36,8 @@ export type IconName =
   | "sun"
   | "moon"
   | "tv"
+  | "bell"
+  | "check"
   | "refresh";
 
 const STROKE = {
@@ -176,6 +178,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path {...STROKE} d="M10 14v2.6M7 17.6h6" />
     </>
   ),
+  bell: (
+    <>
+      <path {...STROKE} d="M4.6 14.2h10.8l-1.3-1.9V8.6a4.1 4.1 0 0 0-8.2 0v3.7z" />
+      <path {...STROKE} d="M8.3 16.6a1.9 1.9 0 0 0 3.4 0" />
+    </>
+  ),
+  check: <path {...STROKE} d="m4.6 10.4 3.5 3.5 7.3-7.8" />,
   refresh: (
     <>
       <path {...STROKE} d="M17.1 12.5a7.5 7.5 0 1 1-1.8-7.8l3.9 3.6" />

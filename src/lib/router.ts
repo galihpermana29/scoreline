@@ -12,7 +12,8 @@ export type BrowseRoute =
   | { kind: "sport"; slug: string }
   | { kind: "leagues"; leagueId: string | null }
   | { kind: "tables"; code: string | null }
-  | { kind: "search"; query: string };
+  | { kind: "search"; query: string }
+  | { kind: "link"; code: string };
 
 export type Route = BrowseRoute | { kind: "match"; match: MatchRoute; href: string };
 
@@ -37,6 +38,7 @@ export const parseRoute = (pathname: string, search: string): Route => {
   if (head === "leagues") return { kind: "leagues", leagueId: tail ? decodeURIComponent(tail) : null };
   if (head === "tables") return { kind: "tables", code: tail ? decodeURIComponent(tail) : null };
   if (head === "search") return { kind: "search", query: new URLSearchParams(search).get("q") ?? "" };
+  if (head === "link") return { kind: "link", code: new URLSearchParams(search).get("code") ?? "" };
   return { kind: "home" };
 };
 
@@ -54,6 +56,8 @@ export const browsePath = (route: BrowseRoute): string => {
       return route.code === null ? "/tables" : `/tables/${encodeURIComponent(route.code)}`;
     case "search":
       return route.query ? `/search?q=${encodeURIComponent(route.query)}` : "/search";
+    case "link":
+      return route.code ? `/link?code=${encodeURIComponent(route.code)}` : "/link";
   }
 };
 

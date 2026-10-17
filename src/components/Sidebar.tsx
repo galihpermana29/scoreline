@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { TOP_CATEGORIES, extraCategories, type Category } from "../domain/categories";
 import { SPORT_ICON, type Match } from "../domain/match";
 import { browsePath, navigate, type Route } from "../lib/router";
+import { BellButton } from "../alerts/BellButton";
 import { Icon, type IconName } from "./icons";
 import { ScorelineBadge } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
@@ -227,6 +228,7 @@ export const Sidebar = ({
       </LayoutGroup>
 
       <div className="sidebar-bottom">
+        <BellButton variant="row" />
         <button
           className="nav-item"
           aria-label="Refresh"

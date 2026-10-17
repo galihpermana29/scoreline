@@ -1,6 +1,6 @@
 import type { Match, MatchStatus, Team } from "../domain/match";
 import { sportThumb } from "../domain/artwork";
-import { num, parseProto, sub, subs, text, texts, type ProtoField } from "../lib/protobuf";
+import { parseFeed, type RawRow } from "../../shared/feed";
 import { FEED_PATH, resetApiHosts, resolveApiHosts } from "./source-sites";
 
 /**
@@ -113,27 +113,6 @@ const parseStatus = (code: number | null, kickoff: Date | null): MatchStatus => 
   return { kind: "live", label: "LIVE" };
 };
 
-/** Name message shape shared by competitions, teams, and countries: {2: name}. */
-const nameOf = (message: ProtoField[] | null): string | null =>
-  message === null ? null : text(sub(message, 3) ?? message, 2);
-
-/**
- * One row of message field 30, observed shapes across sports:
- * - {2: title} - the match's display title
- * - {1: side?, 10: team} - team sports; only football carries an explicit side
- *   at the row level, and even that is unreliable (duplicated values).
- * - {20: player} - tennis ships players at field 20 with the same inner
- *   message shape {1: id, 3: {2: name}, 4: logo}.
- * Side markers are noise, so row order decides home/away.
- */
-const teamFromRow = (row: ProtoField[]): Team | null => {
-  const raw = sub(row, 10) ?? sub(row, 20);
-  if (raw === null) return null;
-  const name = nameOf(raw);
-  if (name === null) return null;
-  return { id: String(num(raw, 1) ?? name), name, badge: text(raw, 4) };
-};
-
 /** Splits a display title like "KuPs vs Trabzonspor" into two fallback teams. */
 const titleFallback = (title: string | null): { home: Team; away: Team } => {
   if (title?.includes(" vs ")) {
@@ -150,122 +129,55 @@ const titleFallback = (title: string | null): { home: Team; away: Team } => {
   };
 };
 
-/**
- * Each sport union member declares its SEO block at a different field number
- * (football pins at 150, most others 150 + sportId, the "everything else"
- * bucket sits at 200). The block ships pre-made slugs: 20 = match, 21 = competition.
- */
-const seoCarrierFor = (sportId: number): number =>
-  sportId === 1 ? 150 : sportId === 90 ? 200 : 150 + sportId;
-
-const parseMatch = (message: ProtoField[], oddsById: Map<string, string[]>): Match | null => {
-  const id = num(message, 1);
-  const sportId = num(message, 2);
-  if (id === null || sportId === null) return null;
-
-  const kickoffMs = num(message, 3);
-  const kickoff = kickoffMs !== null && kickoffMs > 0 ? new Date(kickoffMs) : null;
-
-  const competition = sub(message, 10);
-  const country = competition === null ? null : nameOf(sub(competition, 80));
-
-  const seo = sub(message, seoCarrierFor(sportId));
-  const matchSlug = seo === null ? null : text(seo, 20);
-  const competitionSlug = seo === null ? null : text(seo, 21);
-  const slugs =
-    matchSlug !== null && competitionSlug !== null
-      ? { match: matchSlug, competition: competitionSlug }
-      : undefined;
-
-  const rows = subs(message, 30);
-  const titleRow = rows.find((row) => num(row, 1) === null);
-  const titleText = titleRow === undefined ? null : text(titleRow, 2);
-
-  const teams = rows.map(teamFromRow).flatMap((entry) => (entry ? [entry] : []));
+const parseMatch = (row: RawRow): Match => {
+  const { matchId, sportId, competition, title } = row;
+  const kickoff = row.kickoffMs === null ? null : new Date(row.kickoffMs);
+  const slugs = row.slugs ?? undefined;
 
   // Row order is the dependable signal: first team row is home, second is away.
   // The feed's own side markers are unreliable (duplicated 1s, or absent).
-  const homeTeam = teams[0] ?? titleFallback(titleText).home;
-  const awayTeam = teams[1] ?? titleFallback(titleText).away;
-  const artHint = [titleText, homeTeam.name, awayTeam.name, nameOf(competition)].filter(Boolean).join(" ");
+  const teams: Team[] = row.teams.map((team) => ({ id: String(team.id ?? team.name), name: team.name, badge: team.badge }));
+  const homeTeam = teams[0] ?? titleFallback(title).home;
+  const awayTeam = teams[1] ?? titleFallback(title).away;
+  const artHint = [title, homeTeam.name, awayTeam.name, competition?.name].filter(Boolean).join(" ");
+
+  const base = {
+    id: `ae-${matchId}`,
+    sport: sportLabel(sportId),
+    league: {
+      id: String(competition?.id ?? matchId),
+      name: competition?.name ?? "Live match",
+      badge: competition?.badge ?? null,
+    },
+    kickoff,
+    status: parseStatus(row.statusCode, kickoff),
+    venue: null,
+    country: competition?.country ?? null,
+    round: null,
+    thumb: sportThumb(sportId, String(matchId), artHint),
+    sportId,
+    slugs,
+    odds: row.odds.length > 0 ? row.odds : undefined,
+  };
 
   // Session-style entries have no team rows. The title becomes the event
   // label and is never split into two fake opponents.
   if (teams.length === 0) {
-    const name = titleText ?? "Live session";
+    const name = title ?? "Live session";
     const team = { id: name, name, badge: null };
-    return {
-      id: `ae-${id}`,
-      sport: sportLabel(sportId),
-      league: {
-        id: String((competition !== null ? num(competition, 1) : null) ?? id),
-        name: nameOf(competition) ?? "Live match",
-        badge: competition === null ? null : text(competition, 4),
-      },
-      home: team,
-      away: team,
-      homeScore: null,
-      awayScore: null,
-      kickoff,
-      status: parseStatus(num(message, 4), kickoff),
-      venue: null,
-      country,
-      round: null,
-      thumb: sportThumb(sportId, String(id), artHint),
-      sportId,
-      slugs,
-      odds: oddsById.get(String(id)) ?? undefined,
-      titleOnly: true,
-    } satisfies Match;
+    return { ...base, home: team, away: team, homeScore: null, awayScore: null, titleOnly: true } satisfies Match;
   }
 
-  const brief = sub(message, 100);
-  const scoreMessage = brief === null ? null : sub(brief, 2);
-  const homeScore = scoreMessage === null ? null : num(scoreMessage, 10);
-  const awayScore = scoreMessage === null ? null : num(scoreMessage, 11);
-
   return {
-    id: `ae-${id}`,
-    sport: sportLabel(sportId),
-    league: {
-      id: String((competition !== null ? num(competition, 1) : null) ?? id),
-      name: nameOf(competition) ?? "Live match",
-      badge: competition === null ? null : text(competition, 4),
-    },
+    ...base,
     home: homeTeam,
     away: awayTeam,
-    homeScore,
-    awayScore,
-    kickoff,
-    status: parseStatus(num(message, 4), kickoff),
-    venue: null,
-    country,
-    round: null,
-    thumb: sportThumb(sportId, String(id), artHint),
-    sportId,
-    slugs,
-    odds: oddsById.get(String(id)) ?? undefined,
+    homeScore: row.score?.home ?? null,
+    awayScore: row.score?.away ?? null,
   } satisfies Match;
 };
 
-const parsePayload = (payload: Uint8Array): Match[] => {
-  const root = parseProto(payload);
-  if (root === null) throw new Error("Live feed returned bytes that are not protobuf.");
-  const data = sub(root, 10);
-  if (data === null) return [];
-
-  // Message 10.3: betting odds, {2: sportId, 5: repeated decimal strings, 20: matchId}.
-  const oddsById = new Map<string, string[]>();
-  for (const row of subs(data, 3)) {
-    const matchId = num(row, 20);
-    const values = texts(row, 5);
-    if (matchId !== null && values.length > 0) oddsById.set(String(matchId), values);
-  }
-
-  return subs(data, 1)
-    .map((row) => parseMatch(row, oddsById))
-    .flatMap((match) => (match ? [match] : []));
-};
+const parsePayload = (payload: Uint8Array): Match[] => parseFeed(payload).rows.map(parseMatch);
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { fetchStandings, tableSpec } from "../api/standings";
+import { BellButton } from "../alerts/BellButton";
 import { StandingsSkeleton, StandingsTable } from "../components/StandingsTable";
 import { Hero, LeagueTile, MatchCard, PromoBanner, Shelf, ShelfSkeleton, WideCard, type OpenMatch } from "../components/tv";
 import { Icon } from "../components/icons";
@@ -153,7 +154,12 @@ export const HomeScreen = ({
     <div className="screen home">
       <div className="home-search">
         <SearchBox route={route} className="search-field-floating" />
-        {phone ? <ThemeToggle variant="pill" /> : null}
+        {phone ? (
+          <>
+            <BellButton variant="pill" />
+            <ThemeToggle variant="pill" />
+          </>
+        ) : null}
       </div>
       {featured.length > 0 ? (
         <Hero matches={featured} onOpen={onOpen} onMore={onMore} />
