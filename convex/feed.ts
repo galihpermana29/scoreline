@@ -40,23 +40,32 @@ const operatorSend = async (subject: string, lines: readonly string[]): Promise<
   if (outcome.kind !== "sent") console.error(`[health] operator mail ${outcome.kind}`, outcome);
 };
 
-/** Mails the claimed jobs and records Brevo's verdict; a lost answer leaves the row `sending` and is never retried. */
+/**
+ * Mails the claimed jobs, one mail per viewer: matches that started
+ * streaming in the same tick share a message. Brevo's verdict is recorded on
+ * every ledger row of that mail; a lost answer leaves them all `sending` and
+ * they are never retried.
+ */
 export const sendJobs = async (ctx: ActionCtx, jobs: readonly SendJob[]): Promise<void> => {
   const appOrigin = process.env.APP_ORIGIN ?? "";
   const siteUrl = process.env.CONVEX_SITE_URL ?? "";
-  for (const job of jobs) {
-    const link = unsubscribeUrl(siteUrl, job.userId, await signUser(job.userId));
-    const outcome = await sendMail(alertMail({ row: job.row, to: job.email, appOrigin, unsubscribeLink: link }));
+  const byUser = new Map<string, SendJob[]>();
+  for (const job of jobs) byUser.set(job.userId, [...(byUser.get(job.userId) ?? []), job]);
+
+  for (const group of byUser.values()) {
+    const first = group[0]!;
+    const link = unsubscribeUrl(siteUrl, first.userId, await signUser(first.userId));
+    const outcome = await sendMail(alertMail({ rows: group.map((job) => job.row), to: first.email, appOrigin, unsubscribeLink: link }));
+    const ids = group.map((job) => job.ledgerId);
     if (outcome.kind === "unknown") {
-      // The mail may have gone out: leave the row `sending`, never retry.
-      console.error(`[alerts] no answer from Brevo for ledger ${job.ledgerId}: ${outcome.error}`);
+      // The mail may have gone out: leave the rows `sending`, never retry.
+      console.error(`[alerts] no answer from Brevo for ledger ${ids.join(",")}: ${outcome.error}`);
       continue;
     }
-    if (outcome.kind === "rejected") console.error(`[alerts] Brevo rejected ledger ${job.ledgerId}: ${outcome.status} ${outcome.body}`);
-    await ctx.runMutation(internal.sending.finish, {
-      ledgerId: job.ledgerId,
-      outcome: outcome.kind === "sent" ? "sent" : "rejected",
-    });
+    if (outcome.kind === "rejected") console.error(`[alerts] Brevo rejected ledger ${ids.join(",")}: ${outcome.status} ${outcome.body}`);
+    for (const ledgerId of ids) {
+      await ctx.runMutation(internal.sending.finish, { ledgerId, outcome: outcome.kind === "sent" ? "sent" : "rejected" });
+    }
   }
 };
 
@@ -73,6 +82,8 @@ export const tick = internalAction({
 
     let hosts = await resolveHosts(ctx);
     let anyAnswered = false;
+    // Claimed across every sport of this tick, so a viewer whose football and badminton picks start together get one mail.
+    const claimed: SendJob[] = [];
 
     for (const [index, sportType] of sportTypes.entries()) {
       if (index > 0) await sleep(REQUEST_SPACING_MS);
@@ -116,8 +127,10 @@ export const tick = internalAction({
         })),
       });
 
-      await sendJobs(ctx, jobs);
+      claimed.push(...jobs);
     }
+
+    await sendJobs(ctx, claimed);
 
     // Every requested sport failed for real (499s count as answers): the whole family is down or rotated.
     if (!anyAnswered) await ctx.runMutation(internal.feedState.setHosts, { hosts: [] });
