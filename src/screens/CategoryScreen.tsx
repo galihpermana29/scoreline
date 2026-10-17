@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Artwork, MatchCard, Shelf, type OpenMatch } from "../components/tv";
 import { Notice } from "../components/ui";
-import { byPriority, inCategory, type Category } from "../domain/categories";
+import { byPriority, footballLeagueTier, inCategory, type Category } from "../domain/categories";
 import { otherThumb, sportThumb } from "../domain/artwork";
 import { byKickoff, type Match } from "../domain/match";
 
@@ -25,7 +25,13 @@ export const CategoryScreen = ({
 }) => {
   const inScope = useMemo(() => matches.filter((match) => inCategory(match, category)), [matches, category]);
   const live = useMemo(() => inScope.filter((match) => match.status.kind === "live").sort(byPriority), [inScope]);
-  const upcoming = useMemo(() => inScope.filter((match) => match.status.kind === "upcoming").sort(byKickoff), [inScope]);
+  const upcoming = useMemo(
+    () =>
+      inScope
+        .filter((match) => match.status.kind === "upcoming")
+        .sort((a, b) => footballLeagueTier(a) - footballLeagueTier(b) || byKickoff(a, b)),
+    [inScope],
+  );
   const results = useMemo(
     () => [...inScope.filter((match) => match.status.kind === "finished")].sort(byKickoff).reverse(),
     [inScope],

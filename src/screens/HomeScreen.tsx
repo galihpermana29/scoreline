@@ -5,19 +5,24 @@ import { StandingsSkeleton, StandingsTable } from "../components/StandingsTable"
 import { Hero, LeagueTile, MatchCard, PromoBanner, Shelf, ShelfSkeleton, WideCard, type OpenMatch } from "../components/tv";
 import { Icon } from "../components/icons";
 import { Notice } from "../components/ui";
-import { TOP_CATEGORIES, byPriority, extraCategories, inCategory, matchBand, sportPriority } from "../domain/categories";
+import { TOP_CATEGORIES, byPriority, extraCategories, footballLeagueTier, inCategory, matchBand, sportPriority } from "../domain/categories";
 import { SPORT_ICON, byKickoff, groupByLeague, isWomens, type Match } from "../domain/match";
 import { SearchBox } from "../components/SearchBox";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { browsePath, navigate, type Route } from "../lib/router";
 import { useAsync } from "../lib/useAsync";
 
-/** Live first, then the next kick-offs; within each, the pinned sports lead. */
+/** Live first, then the next kick-offs; within each, the pinned sports lead, and inside football the tier leagues lead. */
 export const pickFeatured = (matches: readonly Match[], limit = 5): Match[] => {
   const rank = (match: Match) =>
     (match.status.kind === "live" ? 0 : match.status.kind === "upcoming" ? 1 : 2) * 10 + matchBand(match);
   return [...matches]
-    .sort((a, b) => rank(a) - rank(b) || (a.kickoff?.getTime() ?? 0) - (b.kickoff?.getTime() ?? 0))
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) ||
+        footballLeagueTier(a) - footballLeagueTier(b) ||
+        (a.kickoff?.getTime() ?? 0) - (b.kickoff?.getTime() ?? 0),
+    )
     .slice(0, limit);
 };
 
@@ -129,6 +134,7 @@ export const HomeScreen = ({
               (a, b) =>
                 (a.status.kind === "live" ? 0 : 1) - (b.status.kind === "live" ? 0 : 1) ||
                 Number(isWomens(a)) - Number(isWomens(b)) ||
+                footballLeagueTier(a) - footballLeagueTier(b) ||
                 byKickoff(a, b),
             )
             .slice(0, 14),

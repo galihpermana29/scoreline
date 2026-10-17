@@ -360,7 +360,7 @@
   .watch-top {
     height: 48px;
     margin: 0;
-    padding: env(safe-area-inset-top) 10px 0;
+    padding: env(safe-area-inset-top) var(--gutter) 0;
     box-sizing: content-box;
   }
 
@@ -383,6 +383,15 @@
     width: 100%;
     border-radius: 0;
     box-shadow: none;
+  }
+
+  /* Phone zeroes .watch's own gutter: every section pads itself (the top
+     bar, the body below). The servers row does the same here, and drops
+     the desktop's max-width centring, which is meaningless below 1180. */
+  .watch-servers {
+    max-width: none;
+    margin: 14px 0 0;
+    padding: 0 var(--gutter);
   }
 
   .watch-body {
@@ -675,7 +684,59 @@
   border-radius: 0;
 }
 
-/* Transient notices: fullscreen denied, direct-player fallback. */
+/* Faux fullscreen: the fixed full-viewport stand-in for browsers that ship
+   no element fullscreen (every iOS browser - their API is video-only and
+   the video lives in the cross-origin embed) or that refuse the request.
+   Same geometry contract as the real thing: the shell takes every pixel,
+   the in-shell control bar stays reachable, the floating toolbar's lane
+   (z 42) is covered by the shell since an exit-less pill floating
+   over the video would be a trap. */
+.player-shell-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 46;
+  width: 100%;
+  aspect-ratio: auto;
+  border-radius: 0 !important;
+  box-shadow: none;
+}
+
+/* The shell cannot out-z the root-level sidebar on its own: it sits in the
+   watch layer's stacking context (z 40) and the sidebar is a root-level
+   fixed element at z 45, so only the layer can climb. Set on <body> by
+   StreamScreen while the shell is maximized (native or faux). The floating
+   toolbar lane (z 42) slides under the layer too - during fullscreen the
+   in-shell control bar is the reachable chrome, the pill would be a trap. */
+body.scoreline-shell-max .watch-layer {
+  z-index: 50;
+}
+
+/* Portrait-only rotate hint, drawn toward the phone's top edge where the
+   letterbox leaves dead picture. Landscape hides it - the reminder is for
+   the orientation that wastes screen, not the one that fills it. */
+.player-shell-rotate {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--label);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+@media (orientation: portrait) {
+  .player-shell-fs .player-shell-rotate {
+    display: block;
+  }
+}
+
+/* Transient notices on the embed, e.g. the direct-player fallback. */
 .player-embed-denied {
   position: absolute;
   top: 60px;

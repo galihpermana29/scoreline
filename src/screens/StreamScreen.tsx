@@ -67,6 +67,14 @@ import { downloadCalendarEvent } from "../lib/calendar";
  * needs no permission delegation at all, so the control works no matter how
  * the source site re-wires its own embed.
  *
+ * Mobile (2026-10-17): iPhone Safari ships no element fullscreen at all -
+ * its API is video-only, and the video lives inside the cross-origin embed,
+ * beyond reach - so when the native request is missing (every iOS browser
+ * is WebKit) or refused, the shell maximizes as a fixed full-viewport
+ * overlay with the same in-shell control bar: "faux fullscreen". Desktop
+ * and Android keep the real thing; iOS gets the closest a browser tab can
+ * offer, with a rotate hint in portrait.
+ *
  * Rotation resilience (2026-10-16): no embedded origin is hardcoded -
  * useEntryOrigin resolves the live entry generation and usePlayerHosts the
  * live player hosts, both at runtime. A mounted embed that never signals
@@ -388,24 +396,42 @@ export const StreamScreen = ({
   // in sync even when the browser exits fullscreen on its own (Esc key).
   const shellRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // Set when the browser itself denies a requestFullscreen; browsers give no
-  // event for this, so it is cleared on the next change or after a pause.
-  const [fullscreenDenied, setFullscreenDenied] = useState(false);
+  // Faux fullscreen (see the header comment): when the native API is missing
+  // (iPhone Safari) or refuses the request, the shell maximizes as a fixed
+  // full-viewport overlay instead. Esc leaves it on keyboards; the shell's
+  // own control bar is the exit on touch screens.
+  const [isFaux, setIsFaux] = useState(false);
+  const shellMaximized = isFullscreen || isFaux;
+
+  // While maximized the shell must take every pixel - including the ones the
+  // root-level sidebar (fixed, z 45) normally owns. The shell lives inside
+  // the watch layer's stacking context (z 40), so no z on the shell itself
+  // can cross that boundary; raise the whole layer instead (see
+  // `.scoreline-shell-max` in watch.css). Native element fullscreen does not
+  // need this (the top layer sits above everything), but it is harmless.
+  useEffect(() => {
+    document.body.classList.toggle("scoreline-shell-max", shellMaximized);
+    return () => {
+      document.body.classList.remove("scoreline-shell-max");
+    };
+  }, [shellMaximized]);
 
   useEffect(() => {
     const sync = () => {
       setIsFullscreen(document.fullscreenElement !== null);
-      setFullscreenDenied(false);
     };
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
 
   useEffect(() => {
-    if (!fullscreenDenied) return;
-    const timer = setTimeout(() => setFullscreenDenied(false), 4000);
-    return () => clearTimeout(timer);
-  }, [fullscreenDenied]);
+    if (!isFaux) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsFaux(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isFaux]);
 
   // The zoom crop's on/off: on by default, remembered across visits.
   const [zoom, setZoom] = useState(() => {
@@ -571,6 +597,7 @@ export const StreamScreen = ({
     setEmbedFailures(0);
     // Leaving fullscreen on stop returns the page to its normal layout
     // instead of showing the simulated shell stretched over the screen.
+    setIsFaux(false);
     if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => {});
   };
 
@@ -620,12 +647,40 @@ export const StreamScreen = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, embedReady, embedEpoch, embedFailures, reloadOrigin]);
 
+  /**
+   * Maximize the shell in the best mode the browser offers. Native first -
+   * the real thing, browser chrome gone, via the unprefixed API or Safari's
+   * WebKit-prefixed one. Missing API (iPhone Safari) or a refused request
+   * falls back to faux fullscreen: the fixed full-viewport overlay, which
+   * needs nothing from the browser.
+   */
   const toggleFullscreen = () => {
+    if (isFaux) {
+      setIsFaux(false);
+      return;
+    }
     if (document.fullscreenElement !== null) {
       void document.exitFullscreen().catch(() => {});
       return;
     }
-    shellRef.current?.requestFullscreen().catch(() => setFullscreenDenied(true));
+    const shell = shellRef.current as (HTMLDivElement & { webkitRequestFullscreen?: () => unknown }) | null;
+    if (shell !== null) {
+      try {
+        if (typeof shell.requestFullscreen === "function") {
+          void shell.requestFullscreen().catch(() => setIsFaux(true));
+          return;
+        }
+        if (typeof shell.webkitRequestFullscreen === "function") {
+          const outcome = shell.webkitRequestFullscreen();
+          if (outcome instanceof Promise) outcome.catch(() => setIsFaux(true));
+          return;
+        }
+      } catch {
+        setIsFaux(true);
+        return;
+      }
+    }
+    setIsFaux(true);
   };
 
   const flag = playing
@@ -706,10 +761,14 @@ export const StreamScreen = ({
       <button
         className="toolbar-button"
         onClick={toggleFullscreen}
-        aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        title={isFullscreen ? "Leave fullscreen" : "Fullscreen the live embed (uses this page, not the player's own button)"}
+        aria-label={shellMaximized ? "Exit fullscreen" : "Fullscreen"}
+        title={
+          shellMaximized
+            ? "Leave fullscreen"
+            : "Fullscreen the live embed using this page, not the player's own button; where the browser has no fullscreen API (iPhone) it becomes a full-screen overlay"
+        }
       >
-        <Icon name={isFullscreen ? "fullscreen-exit" : "fullscreen"} size={16} />
+        <Icon name={shellMaximized ? "fullscreen-exit" : "fullscreen"} size={16} />
       </button>
       <button
         className="toolbar-button"
@@ -742,7 +801,7 @@ export const StreamScreen = ({
 
       <div className="watch-stage">
         <motion.div
-          className="player-shell"
+          className={`player-shell${isFaux ? " player-shell-fs" : ""}`}
           ref={shellRef}
           layoutId={layoutId ?? undefined}
           transition={MORPH_SPRING}
@@ -818,11 +877,14 @@ export const StreamScreen = ({
                 </div>
               ) : null}
               {/* In fullscreen the toolbar below is off screen, so the
-                  controls ride inside the frame for the duration. */}
-              {isFullscreen ? <div className="player-embed-bar">{embedControls}</div> : null}
-              {fullscreenDenied ? (
-                <div className="player-embed-denied" role="status">
-                  Fullscreen was blocked by the browser
+                  controls ride inside the frame for the duration. The faux
+                  overlay covers the toolbar's lane too, so it shares this. */}
+              {shellMaximized ? <div className="player-embed-bar">{embedControls}</div> : null}
+              {/* The faux overlay on a portrait phone shows a landscape video
+                  letterboxed; the hint hands the visitor the bigger picture. */}
+              {isFaux ? (
+                <div className="player-shell-rotate" aria-hidden>
+                  Rotate for a bigger picture
                 </div>
               ) : null}
               {playerNotice !== null ? (

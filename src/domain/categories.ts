@@ -70,6 +70,37 @@ export const sportPriority = (sportId: number | undefined): number =>
   sportId === undefined ? PRIORITY.size + 1 : (PRIORITY.get(sportId) ?? PRIORITY.size + 1);
 
 /**
+ * The football competitions that lead inside the football band, in display
+ * order. Keyed on the feed's own competition ids - names drift and repeat
+ * ("Premier League" is six countries, league names are Italianised), ids are
+ * the stable identity. Verified live 2026-10-17 against the source's own
+ * league endpoints (season lists answered for every id; the UCL team table
+ * showed the 26-27 league phase), Serie A traced through an old-generation
+ * tournament URL. See AGENTS.md dated facts.
+ */
+const FOOTBALL_LEAGUE_TIERS: readonly number[] = [
+  4356, // Premier League (England)
+  4400, // LALIGA (Spain)
+  4387, // Serie A (Italy)
+  4411, // Bundesliga (Germany)
+  4426, // Ligue 1 (France)
+  5078, // UEFA Champions League
+];
+const FOOTBALL_TIER_RANK = new Map(FOOTBALL_LEAGUE_TIERS.map((id, index) => [String(id), index + 1]));
+
+/**
+ * League tier inside the football band: 1..N for the listed competitions,
+ * one tail rank for any other men's football league, and a flat 0 for
+ * anything that is not men's football. The 0 is inert: non-football and
+ * women's fixtures sit in other bands, so within the football band this
+ * number only ever compares men's football against men's football.
+ */
+export const footballLeagueTier = (match: Match): number => {
+  if (match.sportId !== 1 || isWomens(match)) return 0;
+  return FOOTBALL_TIER_RANK.get(match.league.id) ?? FOOTBALL_LEAGUE_TIERS.length + 1;
+};
+
+/**
  * Priority band for shelf ordering. The front of the app is "top categories
  * + men's": a women's fixture never rides its sport's pinned band, whatever
  * the sport - it sinks to the shared tail with the unpinned sports and
@@ -78,9 +109,13 @@ export const sportPriority = (sportId: number | undefined): number =>
  */
 export const matchBand = (match: Match): number => (isWomens(match) ? PRIORITY.size + 1 : sportPriority(match.sportId));
 
-/** Top-category men's first (in sidebar order), then everything else by kick-off. */
+/**
+ * Top-category men's first (in sidebar order), then - inside the football
+ * band - the listed leagues in tier order (Premier League, LALIGA, ...),
+ * then kick-off everywhere.
+ */
 export const byPriority = (a: Match, b: Match): number =>
-  matchBand(a) - matchBand(b) || byKickoff(a, b);
+  matchBand(a) - matchBand(b) || footballLeagueTier(a) - footballLeagueTier(b) || byKickoff(a, b);
 
 export const sportSlug = (sport: string): string =>
   sport
