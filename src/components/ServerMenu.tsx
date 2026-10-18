@@ -1,31 +1,46 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { TimChannel } from "../api/timstreams";
 import type { StreamOption } from "../api/streams";
 import { bestMeasured, qualityBadge, streamQuality } from "../domain/streamQuality";
 import { Icon } from "./icons";
 
 /**
- * The page-embed server list, as a toolbar menu. Same choices as the old
- * chip row: each entry posts the source's own server-switch message, the
- * measured-quality badge is unchanged, and the pressed entry is the last
- * choice made from here. The menu opens upward because the toolbar is
- * pinned to the bottom of the layer.
+ * The page-embed server list, as a toolbar menu. Two sources, one list:
+ * the source's own channels first (each posting the server-switch message
+ * inside the embed), then - only when the watched match has one - the
+ * tim-streams second source's channels behind a divider (docs/
+ * tim-extra-streams.md). A second-source entry swaps the whole stage to a
+ * separate embed; it never gets a quality badge (nothing is measured for
+ * it) and the `TS` tag tells the two sources apart. The menu opens upward
+ * because the toolbar is pinned to the bottom of the layer.
  */
 export const ServerMenu = ({
   options,
   activeStreamId,
   onChoose,
+  timChannels = [],
+  activeTimUrl = null,
+  onChooseTim,
 }: {
   options: readonly StreamOption[];
   activeStreamId: number | null;
   onChoose: (stream: StreamOption) => void;
+  /** The match's tim-streams channels, if any were matched. */
+  timChannels?: readonly TimChannel[];
+  /** The currently mounted tim channel's url, if one is on stage. */
+  activeTimUrl?: string | null;
+  onChooseTim?: (channel: TimChannel) => void;
 }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const best = bestMeasured(options);
-  const active = options.find((stream) => stream.streamId === activeStreamId) ?? null;
-  const activeQuality = active === null ? null : streamQuality(active.name);
+  const activeSource = options.find((stream) => stream.streamId === activeStreamId) ?? null;
+  const activeTim = timChannels.find((channel) => channel.url === activeTimUrl) ?? null;
+  const active = activeSource ?? activeTim;
+  const activeQuality = activeSource === null ? null : streamQuality(activeSource.name);
+  const hasTimEntries = timChannels.length > 0 && onChooseTim !== undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +61,14 @@ export const ServerMenu = ({
     };
   }, [open]);
 
+  const caption = active === null ? "Servers" : active.name;
+  const ariaLabel =
+    active === null
+      ? "Stream servers"
+      : activeTim === active
+        ? `Stream servers, ${active.name} (second source)`
+        : `Stream servers, ${active.name}`;
+
   return (
     <div className="server-menu" ref={rootRef}>
       <button
@@ -55,14 +78,15 @@ export const ServerMenu = ({
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={listId}
-        aria-label={active === null ? "Stream servers" : `Stream servers, ${active.name}`}
+        aria-label={ariaLabel}
         title={active === null ? "Choose a stream server" : `Stream server ${active.name}`}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="server-menu-trigger-name">{active === null ? "Servers" : active.name}</span>
+        <span className="server-menu-trigger-name">{caption}</span>
+        {activeTim !== null ? <span className="watch-server-tag">TS</span> : null}
         {activeQuality !== null ? (
           <span
-            className={`watch-server-quality${best?.stream === active ? " watch-server-quality-best" : ""}`}
+            className={`watch-server-quality${best?.stream === activeSource ? " watch-server-quality-best" : ""}`}
           >
             {qualityBadge(activeQuality)}
           </span>
@@ -103,6 +127,39 @@ export const ServerMenu = ({
               </button>
             );
           })}
+          {hasTimEntries ? (
+            <>
+              <div className="server-menu-divider" role="separator" aria-label="Second-source channels">
+                External
+              </div>
+              {timChannels.map((channel) => {
+                const selected = activeTimUrl === channel.url;
+                return (
+                  <button
+                    key={channel.url}
+                    type="button"
+                    className={`watch-server${selected ? " watch-server-on" : ""}`}
+                    onClick={() => {
+                      onChooseTim?.(channel);
+                      setOpen(false);
+                      triggerRef.current?.focus();
+                    }}
+                    aria-pressed={selected}
+                    title={
+                      selected
+                        ? `Second-source channel ${channel.name} (on stage)`
+                        : `Swap the whole stage to second-source channel ${channel.name} - a different player, no crop or ads guard`
+                    }
+                  >
+                    <span>{channel.name}</span>
+                    <span className="watch-server-tag" aria-label="Second source">
+                      TS
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

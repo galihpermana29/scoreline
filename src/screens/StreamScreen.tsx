@@ -12,6 +12,8 @@ import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { pickNoAdMirrorUrl } from "../api/no-ad-mirror";
 import { fetchMatchStreams, postStreamSwitch, type StreamOption } from "../api/streams";
+import { fetchTimEvents, type TimChannel } from "../api/timstreams";
+import { timChannelsFor } from "../domain/timMatch";
 import { bestMeasured, compareQuality, streamQuality } from "../domain/streamQuality";
 import { ServerMenu } from "../components/ServerMenu";
 import { SignInButton } from "../auth/SignInButton";
@@ -65,6 +67,17 @@ import { downloadCalendarEvent } from "../lib/calendar";
  *   params allowlist (playSiteDomains) accepts this app's own hostname - dev
  *   is allowlisted, a production deployment is not, and there the page mode
  *   is the only embed shown.
+ *
+ * A second source (2026-10-18, docs/tim-extra-streams.md): the server menu
+ * can also offer tim-streams channels for the watched match - matched by
+ * sport, kick-off window and team-name score against their curated list.
+ * Clicking one swaps the whole stage to that channel's own player in a
+ * separate UNSANDBOXED iframe (their play-page guard kills sandboxed or
+ * referer-less frames; the first-play-click ad tab they open is handled
+ * with a dismissible notice). Clicking a source server swaps back: the
+ * source embed remounts fresh, and the picked server is delivered once
+ * the mirror settles. Purely additive - a match with no counterpart shows
+ * exactly the UI it had before.
  *
  * Fullscreen is ours, not theirs (verified 2026-10-16): the embedded player's
  * own fullscreen button calls requestFullscreen() from inside a nested
@@ -211,6 +224,7 @@ export const StreamScreen = ({
   layoutId,
   autoplay,
   related,
+  peers = [],
   onExit,
   onOpen,
   onMore,
@@ -222,6 +236,12 @@ export const StreamScreen = ({
   /** The user explicitly asked to watch: start the live embed without a second click. */
   autoplay: boolean;
   related: readonly Match[];
+  /**
+   * The other feed rows, for the tim-streams matcher's mutual-binding guard
+   * (docs/tim-extra-streams.md). Already in memory - the watch screen itself
+   * stays the only tim consumer.
+   */
+  peers?: readonly Match[];
   onExit: () => void;
   onOpen: OpenMatch;
   onMore: (match: Match) => void;
@@ -267,6 +287,62 @@ export const StreamScreen = ({
   const [embedEpoch, setEmbedEpoch] = useState(0);
   const [embedFailures, setEmbedFailures] = useState(0);
 
+  // The tim-streams second source (docs/tim-extra-streams.md): a small
+  // independently operated site carrying 1-3 extra channels for roughly the
+  // same fixtures. Purely additive: matched channels appear in the server
+  // menu behind a divider, and clicking one swaps the whole stage to that
+  // channel's own player. No postMessage contract exists into their player
+  // (and their play-page guard kills sandboxed frames outright), so the tim
+  // channel mounts in its own unsandboxed iframe and "switching back" remounts
+  // the source embed fresh. A match with no counterpart renders exactly as
+  // before; a failed fetch means "no extra channels", never an error.
+  const [timChannels, setTimChannels] = useState<readonly TimChannel[]>([]);
+  // The tim channel currently on stage, when one is.
+  const [timChannel, setTimChannel] = useState<TimChannel | null>(null);
+  // Their accepted trade (AGENTS.md dated facts): the first trusted play
+  // click opens an ad tab, the second plays. The one-line notice is
+  // dismissible and shown per tim mount.
+  const [timNoticeOpen, setTimNoticeOpen] = useState(false);
+  // A source-server pick made while a tim channel is on stage. The
+  // swap-back remounts the source embed, so the pick is held until the
+  // mirror has settled and then delivered over the postMessage switch.
+  const pendingSourceSwitchRef = useRef<StreamOption | null>(null);
+  // The tim list is fetched once per screen - the watch screen is the only
+  // consumer by design, and the 10-minute event cache dedupes anyway.
+  const timStartedRef = useRef(false);
+  useEffect(() => {
+    if (!playing || timStartedRef.current) return;
+    timStartedRef.current = true;
+    let cancelled = false;
+    void fetchTimEvents()
+      .then((events) => {
+        if (!cancelled) setTimChannels(timChannelsFor(match, events, peers));
+      })
+      .catch(() => {
+        // Unreachable or a shape drift: no extra channels, silently.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Match changes remount this screen (key={match.id} in App.tsx), so
+    // playing plus the once-guard is the whole trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing]);
+
+  const timMounted = playing && timChannel !== null;
+  const chooseTimChannel = (channel: TimChannel) => {
+    // Swapping to or between tim channels is only a frame swap - none of
+    // the source machinery (probe, crop, watchdog, ads guard) takes part,
+    // and the ad-tab note reappears per mount.
+    setEmbedReady(false);
+    setTimChannel(channel);
+    setTimNoticeOpen(true);
+  };
+  const clearTimChannel = () => {
+    setTimChannel(null);
+    setTimNoticeOpen(false);
+  };
+
   // Embed mode: their bare player page directly (default), or their full
   // match page as the fallback. Both ride the runtime-resolved hosts. The
   // direct player needs the route's language and match id plus the feed's
@@ -292,6 +368,10 @@ export const StreamScreen = ({
   const embedMode = canPlayer ? mode : "page";
   const setEmbedMode = (next: "player" | "page") => {
     setMode(next);
+    // A mode switch retires any second-source channel and any pick held
+    // for the source pipeline - both are about the old embed.
+    clearTimChannel();
+    pendingSourceSwitchRef.current = null;
     // A mode switch mid-play is a remount: it re-arms the load watchdog
     // instead of leaving a half-navigated frame.
     if (playing) {
@@ -492,6 +572,18 @@ export const StreamScreen = ({
   // facts, never a guess). The toolbar menu badges the same table.
   const bestKnown = bestMeasured(streamOptions);
   const chooseStream = (stream: StreamOption, picked: "visitor" | "auto" = "visitor") => {
+    if (timChannel !== null) {
+      // A source pick from the menu while a second-source channel is on
+      // stage: swap back now (the source remounts fresh) and hold the pick
+      // until the mirror settles, then deliver it over the usual switch.
+      // Marking the visitor pick now keeps the auto-start out of the way.
+      pendingSourceSwitchRef.current = stream;
+      if (picked === "visitor") visitorPickedRef.current = true;
+      clearTimChannel();
+      setEmbedReady(false);
+      setEmbedEpoch((epoch) => epoch + 1);
+      return true;
+    }
     const frame = embedFrameRef.current;
     if (frame === null) return false;
     // No confirmation channel exists back to this app (page mode): success
@@ -611,6 +703,20 @@ export const StreamScreen = ({
   }, [embedEpoch, embedMode, playing]);
   const embedSettled = zoomCropWanted ? zoomKickDone : embedLoads > 0;
   useEffect(() => {
+    // A source-server pick held from a second-source swap-back is delivered
+    // before anything else, retried on every fresh document in the frame
+    // chain (the entry -> mirror handoff hops documents) - the same retry
+    // shape the auto-start below has. Until it lands, no auto-start runs.
+    const pending = pendingSourceSwitchRef.current;
+    if (pending !== null) {
+      if (playing && embedMode === "page" && embedSettled && chooseStream(pending, "visitor")) {
+        pendingSourceSwitchRef.current = null;
+      }
+      return;
+    }
+    // A tim channel on stage means the source pipeline is idle: nothing to
+    // auto-start against (the swap-back path handles the return).
+    if (timChannel !== null) return;
     if (autoStartedRef.current || visitorPickedRef.current || activeStreamId !== null) return;
     if (!playing || embedMode !== "page" || route === null) return;
     if (streamOptions.length === 0 || !embedSettled) return;
@@ -628,7 +734,7 @@ export const StreamScreen = ({
     // a switch posted to the entry page (no child frames yet) is not
     // delivered, and the attempt must re-arm when the mirror lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, embedMode, embedSettled, embedLoads, route?.matchId, streamOptions, activeStreamId, bestKnown]);
+  }, [playing, embedMode, embedSettled, embedLoads, route?.matchId, streamOptions, activeStreamId, bestKnown, timChannel]);
   const toggleZoom = () => {
     setZoom((current) => {
       try {
@@ -730,6 +836,10 @@ export const StreamScreen = ({
     setPlaying(false);
     setEmbedReady(false);
     setEmbedFailures(0);
+    // Stopping retires any second-source stage and any held pick - a
+    // restart begins from the source's own default channel.
+    clearTimChannel();
+    pendingSourceSwitchRef.current = null;
     // Leaving fullscreen on stop returns the page to its normal layout
     // instead of showing the simulated shell stretched over the screen.
     setIsFaux(false);
@@ -757,6 +867,7 @@ export const StreamScreen = ({
   const retryEmbed = () => {
     setEmbedFailures(0);
     setNoAdSuppressed(false);
+    pendingSourceSwitchRef.current = null;
     remountEmbed(true);
   };
 
@@ -768,6 +879,10 @@ export const StreamScreen = ({
   // retrying and swaps the frame for the explicit retry notice.
   useEffect(() => {
     if (!playing || embedFailures >= 2 || embedReady) return;
+    // A second-source channel on stage owns the frame window: the source
+    // pipeline beneath is unmounted and idle, so its watchdog must not run
+    // (a stalled tim frame is the visitor's swap-back, not a retry loop).
+    if (timChannel !== null) return;
     // Nothing to watch yet while a probe is still choosing the host.
     if (embedMode === "player" && playerPickUrl === null) return;
     if (noAdPending) return;
@@ -790,7 +905,7 @@ export const StreamScreen = ({
     // reloadOrigin is a fresh closure each render but stable in behaviour;
     // epoch is included so a remount re-arms the timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, embedReady, embedEpoch, embedFailures, reloadOrigin, noAdPending, noAdUrl]);
+  }, [playing, embedReady, embedEpoch, embedFailures, reloadOrigin, noAdPending, noAdUrl, timChannel]);
 
   /**
    * Maximize the shell in the best mode the browser offers. Native first -
@@ -829,7 +944,9 @@ export const StreamScreen = ({
   };
 
   const flag = playing
-    ? embedFailures >= 2
+    ? timMounted
+      ? { label: "TS stream", tone: "live" as const, title: "A channel from the tim-streams second source is on stage, in its own player" }
+      : embedFailures >= 2
       ? { label: "Source unreachable", tone: "warn" as const, title: "The live source is not answering; retrying is available below the player" }
       : embedMode === "player"
         ? { label: "Live player", tone: "live" as const, title: "The source site's bare player page is embedded directly, on the first listed player host that provably serves it" }
@@ -960,7 +1077,24 @@ export const StreamScreen = ({
         >
           {playing && embedFailures < 2 ? (
             <>
-              {embedMounted ? (
+              {timMounted && timChannel !== null ? (
+                <iframe
+                  key={`tim-${timChannel.url}`}
+                  className="player-embed"
+                  src={timChannel.url}
+                  // NO sandbox attribute and the DEFAULT referrer policy:
+                  // their play-page guard (decoded 2026-10-18, AGENTS.md
+                  // dated facts) kills the player whenever the frame is
+                  // sandboxed, has an opaque origin, throws on storage
+                  // access, or sees an empty document.referrer. The popups
+                  // a sandbox would block are handled by the notice instead.
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  title={`Live channel ${timChannel.name} from the tim-streams second source, in its own player`}
+                  onLoad={() => {
+                    setEmbedReady(true);
+                  }}
+                />
+              ) : embedMounted ? (
                 <iframe
                   key={`${embedMode}-${embedEpoch}`}
                   ref={embedFrameRef}
@@ -996,11 +1130,12 @@ export const StreamScreen = ({
               {/* The kick cover: hides the shell-sized mount geometry and the
                   relayout tail until the crop has snapped in, then fades -
                   so the first thing the visitor sees is the centered video,
-                  not the frame's plain page. */}
-              {embedMode === "page" && zoom ? (
+                  not the frame's plain page. Source embed only: a second-
+                  source frame fills the shell as-is. */}
+              {!timMounted && embedMode === "page" && zoom ? (
                 <div aria-hidden className={`player-embed-kick-cover${zoomKickDone ? " is-done" : ""}`} />
               ) : null}
-              {pageZoomStyle !== undefined && embedMounted && hideAds && noAdUrl === null ? (
+              {!timMounted && pageZoomStyle !== undefined && embedMounted && hideAds && noAdUrl === null ? (
                 <>
                   {/* Opt-in drift covers: their framed layout can still
                       reflow the video anchor inside the crop after their
@@ -1022,7 +1157,9 @@ export const StreamScreen = ({
               {!embedReady ? (
                 <div className="player-embed-loading" role="status">
                   <span className="player-note-dot" />
-                  {(embedMode === "player" && !embedMounted) || noAdPending
+                  {timMounted
+                    ? "Connecting to the second source…"
+                    : (embedMode === "player" && !embedMounted) || noAdPending
                     ? "Verifying the live source…"
                     : embedFailures === 0
                       ? "Connecting to live source…"
@@ -1048,6 +1185,25 @@ export const StreamScreen = ({
               {quietNotice !== null ? (
                 <div className="player-embed-denied" role="status">
                   {quietNotice}
+                </div>
+              ) : null}
+              {/* The second-source ad-tab note: their popunder design eats
+                  the first trusted play click (an ad tab opens; the second
+                  click plays). Dismissible, once per tim mount - the trade
+                  is accepted because the alternative (a sandboxed frame)
+                  kills their player outright. */}
+              {timMounted && timNoticeOpen ? (
+                <div className="player-embed-denied player-tim-notice" role="status">
+                  <span className="player-tim-notice-text">
+                    Second-source stream: the first play click may open an ad tab. Close it and click play again.
+                  </span>
+                  <button
+                    className="player-tim-notice-close"
+                    onClick={() => setTimNoticeOpen(false)}
+                    aria-label="Dismiss note"
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
                 </div>
               ) : null}
             </>
@@ -1168,8 +1324,15 @@ export const StreamScreen = ({
               >
             {playing ? (
               <>
-                {embedMode === "page" && streamOptions.length > 0 ? (
-                  <ServerMenu options={streamOptions} activeStreamId={activeStreamId} onChoose={chooseStream} />
+                {embedMode === "page" && (streamOptions.length > 0 || timChannels.length > 0) ? (
+                  <ServerMenu
+                    options={streamOptions}
+                    activeStreamId={activeStreamId}
+                    onChoose={chooseStream}
+                    timChannels={timChannels}
+                    activeTimUrl={timChannel?.url ?? null}
+                    onChooseTim={chooseTimChannel}
+                  />
                 ) : null}
                 {embedControls}
               </>

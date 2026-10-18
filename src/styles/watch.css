@@ -308,6 +308,51 @@
   opacity: 0.8;
 }
 
+/* Second-source (tim-streams) entries inside the server menu (docs/
+   tim-extra-streams.md). The divider separates the source's own channels
+   from the external ones; the TS tag distinguishes a second-source entry
+   at a glance. Same quiet register as the quality badge - no
+   backdrop-filter (the no-blur rule), solid or alpha fills only. */
+.server-menu-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 8px;
+  color: var(--label-3);
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
+  text-transform: uppercase;
+}
+
+.server-menu-divider::after {
+  content: "";
+  flex: 1;
+  height: 0.5px;
+  background: var(--hairline);
+}
+
+.watch-server-tag {
+  margin-left: 7px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--fill-strong, rgba(255, 255, 255, 0.08));
+  color: var(--label-2);
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
+}
+
+/* The tag rides the inverted active chip too: inherit the chip color and
+   dim, exactly like the quality badge - a fixed token would wash out. */
+.watch-server-on .watch-server-tag {
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.server-menu-trigger .watch-server-tag {
+  margin-left: 0;
+}
+
 .watch-headline {
   display: flex;
   flex-wrap: wrap;
@@ -868,6 +913,42 @@ body.scoreline-shell-max .watch-layer {
   color: var(--orange);
   font-size: 12px;
   pointer-events: none;
+}
+
+/* The second-source ad-tab notice shares the denied pill, but it is
+   interactive (dismissible) and sits at the frame's top-left so it never
+   fights the player's own chrome at the bottom. */
+.player-tim-notice {
+  left: 16px;
+  right: auto;
+  max-width: calc(100% - 32px);
+  gap: 10px;
+  padding-right: 8px;
+  pointer-events: auto;
+}
+
+.player-tim-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.player-tim-notice-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.player-tim-notice-close:hover {
+  opacity: 1;
 }
 
 /* Retry card shown in place of the frame when the live source stalls twice. */
