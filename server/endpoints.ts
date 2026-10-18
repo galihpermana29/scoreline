@@ -68,6 +68,7 @@ export const configEndpoint = (env?: Env): Response =>
     redirectingEntryHosts: envList("SCORELINE_REDIRECTING_ENTRY_HOSTS", env),
     apiHosts: envList("SCORELINE_API_HOSTS", env),
     playerHosts: envList("SCORELINE_PLAYER_HOSTS", env),
+    timApiHosts: envList("SCORELINE_TIM_API_HOSTS", env),
   });
 
 /**

@@ -45,9 +45,17 @@ type ServerDefaults = {
   redirectingEntryHosts: readonly string[];
   apiHosts: readonly string[];
   playerHosts: readonly string[];
+  /**
+   * The tim-streams second source's API origins (docs/tim-extra-streams.md).
+   * There is no discovery chain for these: no entry page reveals them, so
+   * this env list is the only source. Without it (and without a cached
+   * event list) the tim feature resolves to "no extra channels", never to
+   * an error.
+   */
+  timApiHosts: readonly string[];
 };
 
-const EMPTY_DEFAULTS: ServerDefaults = { entryHosts: [], redirectingEntryHosts: [], apiHosts: [], playerHosts: [] };
+const EMPTY_DEFAULTS: ServerDefaults = { entryHosts: [], redirectingEntryHosts: [], apiHosts: [], playerHosts: [], timApiHosts: [] };
 
 let serverDefaults: Promise<ServerDefaults> | null = null;
 
@@ -65,6 +73,15 @@ const loadServerDefaults = (): Promise<ServerDefaults> => {
     });
   return serverDefaults;
 };
+
+/**
+ * The tim-streams second source's API origins (docs/tim-extra-streams.md).
+ * Env-seeded only: unlike the source's hosts there is no discovery chain
+ * for this family, so this list (plus the localStorage event cache) is
+ * the whole truth. Empty when the config middleware is absent or the env
+ * var is unset, and the tim feature then resolves to "no extra channels".
+ */
+export const timApiOrigins = async (): Promise<readonly string[]> => (await loadServerDefaults()).timApiHosts;
 
 /** Path probed on entry hosts; any language root proves the site is served. */
 const ENTRY_PROBE_PATH = "/id";
