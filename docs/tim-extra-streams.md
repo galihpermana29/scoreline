@@ -51,38 +51,40 @@ The watch screen gets the peer rows for the second guard by receiving the alread
 All in `src/screens/StreamScreen.tsx`, additive:
 
 - Fetch tim events once per screen while `playing` (first press of play) and match them for the current match; on any failure leave the list empty and show nothing.
-- The existing `ServerMenu` (`src/components/ServerMenu.tsx`) grows an optional second-source section: a hairline divider, then one entry per tim channel, each labelled with its name plus a small quiet `TS` source tag distinguishing it from source servers.
+- The existing `ServerMenu` (`src/components/ServerMenu.tsx`) grows an optional second-source section at the very top of the dropdown: a hairline divider, then one entry per tim channel, each labelled with its name plus a small quiet `TS` source tag distinguishing it from source servers, which sit below a `Source` divider.
  When the watched match has no tim counterpart, the menu is byte-for-byte what it is today.
  Source entries keep their measured-quality badges; tim entries never get quality badges (nothing is measured for them).
 - Clicking a tim entry **swaps the whole stage** - there is no postMessage contract into tim's player.
  It unmounts the source embed and mounts the tim stream URL in its own iframe.
  Clicking a source entry swaps back: the source embed remounts fresh (same machinery as a mode switch, bumping `embedEpoch`), the clicked server is recorded as a pending choice and delivered via the existing `postStreamSwitch` once the mirror has settled (the `embedSettled` signal the auto-start already waits on).
-- The tim iframe mount rules are hard requirements from their decoded guard, verified 2026-10-18:
- **no `sandbox` attribute at all** (ours on the source frame is fatal to tim), `allow="autoplay; encrypted-media; picture-in-picture; fullscreen"`, and the default referrer policy (never a no-referrer one - an empty `document.referrer` kills their player).
- Do not reuse the source iframe element; a separate unsandboxed mount is the whole point.
+- The tim iframe mount rules are hard requirements from their decoded guard, corrected 2026-10-18 night (`docs/tim-ad-popups.md`):
+ `sandbox="allow-scripts allow-same-origin"` (the source frame's exact tokens - their guard's sandbox check reads `frameElement`, dead code across origins, and every check that does run passes with `allow-same-origin`), `allow="autoplay; encrypted-media; picture-in-picture; fullscreen"`, and the default referrer policy (never a no-referrer one - an empty `document.referrer` kills their player).
+ Never add `allow-popups`, `allow-popups-to-escape-sandbox` or `allow-top-navigation` - those tokens are exactly what their ad script uses.
+ Do not reuse the source iframe element; a separate mount is the whole point.
 - The tim player fills its frame, so none of the page-mode machinery applies to it: no zoom crop, no kick cover, no mask bars, no ads-guard probe.
  Suppress the source load watchdog while the tim frame is on stage (its 15s stall logic would pointlessly remount the hidden source pipeline).
 - State handling: stop, embed-mode switch and retry all drop a mounted tim channel; the auto-best-server logic stays source-only and never fires while a tim channel is mounted; the stream flag reads distinctly (for example label `TS stream`) so the visitor can tell what is on stage.
-- Ad popup notice: while a tim channel is mounted, show a dismissible one-line notice (the `player-embed-denied` family styles) that the first play click may open an ad tab, close it and press play again.
- This is the accepted-and-documented trade: sandboxing the frame to block the popup kills tim's player outright.
+- Ad popups (`docs/tim-ad-popups.md`): the sandboxed default blocks every ad tab, and the cross-origin refusal their player could someday mount is a silent still frame - so while the sandboxed frame is on stage, show a quiet dismissible affordance ("Not playing? Load with their ads") that remounts the current channel unsandboxed for this mount only.
+ That fallback mount alone is unsandboxed and carries the dismissible ad-tab warning (their popunder eats the first trusted click and every re-armed later one).
+ Picking another channel, swapping back, stop/play and retry all return to the sandboxed default; nothing is persisted.
 - The menu's phone behaviour stays inside the existing toolbar dropdown; no new sections may disturb the phone per-child-inset contract documented for `.watch`.
 
 ## Out of scope
 
 - No home-screen or card-level indicators that a match has tim channels (phase 2).
 - No motorsport/combat matching, no vip streams, no native stream extraction.
-- No ads-guard equivalents for tim; the notice is the handling.
+- No ads-guard equivalents for tim; the sandbox plus the fallback affordance is the handling (`docs/tim-ad-popups.md`).
 - No changes to quality measurement, auto-start, or the Convex alert pipeline.
 
 ## Verification
 
 - `npm run typecheck`.
 - Add `SCORELINE_TIM_API_HOSTS` to local `.env` and to Vercel's project env; confirm `/api/config` returns it.
-- Live in the dev app (port 5188):
-  - a match with a tim counterpart (check the tim list for a big fixture around now) shows the extra `TS` entries in the server menu, with the divider and no quality badges;
-  - clicking a tim entry swaps the stage, the notice shows, and the JWPlayer chrome renders in the frame (video boot needs a real click);
+- In the dev app (port 5188), open a match with tim channels, pick a `TS` entry at the top of the menu:
+ the frame boots JWPlayer, a real click starts video without opening any ad tab, further clicks pause and resume, and the quiet "Not playing?" affordance is there (watch the tab strip for at least two minutes and ten clicks);
+  - the "Load with their ads" affordance remounts unsandboxed with the warning notice, the first click opens an ad tab (expected), and picking another channel or stop/play returns to the sandboxed default with no warning;
   - clicking a source entry swaps back, the source remounts, the pending server choice lands on the settled mirror, and the chip highlight and the in-frame server row agree;
-  - an unmatched match shows no menu changes at all;
+  - an unmatched match shows no menu changes at all (no divider, no `TS` entries, no `Source` divider on a match that has source servers - the source list renders exactly as before);
   - stop/play, embed-mode toggle, zoom, ads guard, fullscreen and the auto-best start still behave exactly as before on a source-only match.
 - Update `AGENTS.md` dated facts with anything newly verified during this build.
 

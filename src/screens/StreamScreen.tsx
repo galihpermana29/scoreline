@@ -69,12 +69,15 @@ import { downloadCalendarEvent } from "../lib/calendar";
  *   is the only embed shown.
  *
  * A second source (2026-10-18, docs/tim-extra-streams.md): the server menu
- * can also offer tim-streams channels for the watched match - matched by
- * sport, kick-off window and team-name score against their curated list.
- * Clicking one swaps the whole stage to that channel's own player in a
- * separate UNSANDBOXED iframe (their play-page guard kills sandboxed or
- * referer-less frames; the first-play-click ad tab they open is handled
- * with a dismissible notice). Clicking a source server swaps back: the
+ * can also offer tim-streams channels for the watched match, listed first -
+ * matched by sport, kick-off window and team-name score against their
+ * curated list. Clicking one swaps the whole stage to that channel's own
+ * player in a separate iframe, sandboxed with the source frame's own
+ * tokens, which passes their guard cross-origin and blocks their ad
+ * popups (docs/tim-ad-popups.md); a quiet affordance offers remounting
+ * "with their ads" if the sandboxed player will not play, and that
+ * fallback mount alone is unsandboxed and carries the ad-tab warning.
+ * Clicking a source server swaps back: the
  * source embed remounts fresh, and the picked server is delivered once
  * the mirror settles. Purely additive - a match with no counterpart shows
  * exactly the UI it had before.
@@ -290,18 +293,30 @@ export const StreamScreen = ({
   // The tim-streams second source (docs/tim-extra-streams.md): a small
   // independently operated site carrying 1-3 extra channels for roughly the
   // same fixtures. Purely additive: matched channels appear in the server
-  // menu behind a divider, and clicking one swaps the whole stage to that
-  // channel's own player. No postMessage contract exists into their player
-  // (and their play-page guard kills sandboxed frames outright), so the tim
-  // channel mounts in its own unsandboxed iframe and "switching back" remounts
-  // the source embed fresh. A match with no counterpart renders exactly as
+  // menu at the top, and clicking one swaps the whole stage to that
+  // channel's own player. No postMessage contract exists into their player,
+  // so the tim channel mounts in its own iframe and "switching back" remounts
+  // the source embed fresh. That iframe is sandboxed with the source
+  // frame's exact tokens (docs/tim-ad-popups.md; the night correction in
+  // AGENTS.md dated facts): `allow-scripts allow-same-origin` passes every
+  // check their guard actually runs against a cross-origin frame and blocks
+  // their ad popups outright. A match with no counterpart renders exactly as
   // before; a failed fetch means "no extra channels", never an error.
   const [timChannels, setTimChannels] = useState<readonly TimChannel[]>([]);
   // The tim channel currently on stage, when one is.
   const [timChannel, setTimChannel] = useState<TimChannel | null>(null);
-  // Their accepted trade (AGENTS.md dated facts): the first trusted play
-  // click opens an ad tab, the second plays. The one-line notice is
-  // dismissible and shown per tim mount.
+  // The "their ads" fallback for this mount only (docs/tim-ad-popups.md):
+  // true means the current tim channel was remounted unsandboxed after the
+  // sandboxed frame would not play. Never persisted, and every path that
+  // changes the stage (another channel, swap back, stop/play, retry, mode
+  // switch) returns to the sandboxed default.
+  const [timFallback, setTimFallback] = useState(false);
+  // While the sandboxed mount is on stage, the quiet "not playing?"
+  // affordance that offers the fallback above. Dismissible, per mount.
+  const [timHintOpen, setTimHintOpen] = useState(false);
+  // The ad-tab warning for the fallback mount only (AGENTS.md dated facts:
+  // unsandboxed, the first trusted play click opens an ad tab and every
+  // re-armed later click too). Dismissible, shown on every fallback mount.
   const [timNoticeOpen, setTimNoticeOpen] = useState(false);
   // A source-server pick made while a tim channel is on stage. The
   // swap-back remounts the source embed, so the pick is held until the
@@ -332,14 +347,30 @@ export const StreamScreen = ({
   const timMounted = playing && timChannel !== null;
   const chooseTimChannel = (channel: TimChannel) => {
     // Swapping to or between tim channels is only a frame swap - none of
-    // the source machinery (probe, crop, watchdog, ads guard) takes part,
-    // and the ad-tab note reappears per mount.
+    // the source machinery (probe, crop, watchdog, ads guard) takes part.
+    // Every new mount returns to the sandboxed default; the hint is the
+    // first thing shown on it.
     setEmbedReady(false);
     setTimChannel(channel);
+    setTimFallback(false);
+    setTimHintOpen(true);
+    setTimNoticeOpen(false);
+  };
+  // The "Load with their ads" affordance (docs/tim-ad-popups.md): their
+  // player cannot be diagnosed across the origin boundary, so a silent
+  // refusal is indistinguishable from a slow boot - the visible escape
+  // hatch is remounting the same channel unsandboxed, which always plays
+  // but brings their ad tabs back (the warning notice follows it).
+  const useTimFallback = () => {
+    setEmbedReady(false);
+    setTimFallback(true);
+    setTimHintOpen(false);
     setTimNoticeOpen(true);
   };
   const clearTimChannel = () => {
     setTimChannel(null);
+    setTimFallback(false);
+    setTimHintOpen(false);
     setTimNoticeOpen(false);
   };
 
@@ -1079,15 +1110,23 @@ export const StreamScreen = ({
             <>
               {timMounted && timChannel !== null ? (
                 <iframe
-                  key={`tim-${timChannel.url}`}
+                  key={`tim-${timChannel.url}-${timFallback ? "ads" : "sb"}`}
                   className="player-embed"
                   src={timChannel.url}
-                  // NO sandbox attribute and the DEFAULT referrer policy:
-                  // their play-page guard (decoded 2026-10-18, AGENTS.md
-                  // dated facts) kills the player whenever the frame is
-                  // sandboxed, has an opaque origin, throws on storage
-                  // access, or sees an empty document.referrer. The popups
-                  // a sandbox would block are handled by the notice instead.
+                  // The mount contract, corrected 2026-10-18 night
+                  // (docs/tim-ad-popups.md, AGENTS.md dated facts): keep
+                  // `allow-same-origin` and the DEFAULT referrer policy or
+                  // their guard kills the player (opaque origin, storage
+                  // throw, empty referrer), and never add `allow-popups` -
+                  // that token is exactly what their ad script uses. The
+                  // sandbox's frameElement check is dead code across
+                  // origins, so the source frame's own tokens pass and the
+                  // ad tabs are blocked outright. The fallback mount (the
+                  // "Load with their ads" affordance) drops the sandbox for
+                  // this mount only and shows the ad warning - their
+                  // player may refuse to run sandboxed one day and the
+                  // cross-origin refusal is a silent still frame.
+                  sandbox={timFallback ? undefined : "allow-scripts allow-same-origin"}
                   allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                   title={`Live channel ${timChannel.name} from the tim-streams second source, in its own player`}
                   onLoad={() => {
@@ -1187,15 +1226,40 @@ export const StreamScreen = ({
                   {quietNotice}
                 </div>
               ) : null}
-              {/* The second-source ad-tab note: their popunder design eats
-                  the first trusted play click (an ad tab opens; the second
-                  click plays). Dismissible, once per tim mount - the trade
-                  is accepted because the alternative (a sandboxed frame)
-                  kills their player outright. */}
-              {timMounted && timNoticeOpen ? (
+              {/* The second source's stage notes, per docs/tim-ad-popups.md.
+                  Default (sandboxed) mount: their ad tabs are blocked, but
+                  their player cannot be probed across the origin boundary -
+                  a silent refusal would look like a still frame - so a
+                  quiet, dismissible affordance offers the one escape hatch:
+                  remounting the same channel with their ads. Fallback
+                  mount (this mount only): the ad-tab warning, because
+                  unsandboxed their popunder eats the first trusted click
+                  and every re-armed later one (AGENTS.md dated facts). */}
+              {timMounted && !timFallback && timHintOpen ? (
                 <div className="player-embed-denied player-tim-notice" role="status">
                   <span className="player-tim-notice-text">
-                    Second-source stream: the first play click may open an ad tab. Close it and click play again.
+                    Second-source stream with their ads blocked. Not playing?
+                  </span>
+                  <button
+                    type="button"
+                    className="player-tim-notice-action"
+                    onClick={useTimFallback}
+                  >
+                    Load with their ads
+                  </button>
+                  <button
+                    className="player-tim-notice-close"
+                    onClick={() => setTimHintOpen(false)}
+                    aria-label="Dismiss note"
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </div>
+              ) : null}
+              {timMounted && timFallback && timNoticeOpen ? (
+                <div className="player-embed-denied player-tim-notice" role="status">
+                  <span className="player-tim-notice-text">
+                    Second-source stream without the ad block: the first play click may open an ad tab. Close it and click play again.
                   </span>
                   <button
                     className="player-tim-notice-close"

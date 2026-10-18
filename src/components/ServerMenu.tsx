@@ -6,12 +6,11 @@ import { Icon } from "./icons";
 
 /**
  * The page-embed server list, as a toolbar menu. Two sources, one list:
- * the source's own channels first (each posting the server-switch message
- * inside the embed), then - only when the watched match has one - the
- * tim-streams second source's channels behind a divider (docs/
- * tim-extra-streams.md). A second-source entry swaps the whole stage to a
- * separate embed; it never gets a quality badge (nothing is measured for
- * it) and the `TS` tag tells the two sources apart. The menu opens upward
+ * the tim-streams second source's channels come first, at the very top
+ * (docs/tim-extra-streams.md), with the source's own channels below a
+ * divider. A second-source entry swaps the whole stage to a separate
+ * embed; it never gets a quality badge (nothing is measured for it) and
+ * the `TS` tag tells the two sources apart. The menu opens upward
  * because the toolbar is pinned to the bottom of the layer.
  */
 export const ServerMenu = ({
@@ -95,38 +94,9 @@ export const ServerMenu = ({
       </button>
       {open ? (
         <div className="server-menu-list" id={listId} role="group" aria-label="Stream servers">
-          {options.map((stream) => {
-            const quality = streamQuality(stream.name);
-            const isBestKnown = best?.stream === stream;
-            const selected = activeStreamId === stream.streamId;
-            const baseTitle = selected
-              ? `Stream server ${stream.name}`
-              : `Switch the live stream to server ${stream.name}`;
-            const title = quality
-              ? `${baseTitle} - measured ${qualityBadge(quality)}${isBestKnown ? ", best measured server" : ""}`
-              : baseTitle;
-            return (
-              <button
-                key={stream.streamId}
-                type="button"
-                className={`watch-server${selected ? " watch-server-on" : ""}`}
-                onClick={() => {
-                  onChoose(stream);
-                  setOpen(false);
-                  triggerRef.current?.focus();
-                }}
-                aria-pressed={selected}
-                title={title}
-              >
-                <span>{stream.name}</span>
-                {quality !== null ? (
-                  <span className={`watch-server-quality${isBestKnown ? " watch-server-quality-best" : ""}`}>
-                    {qualityBadge(quality)}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+          {/* The second source sits at the very top of the list: its
+              channels are whole-stage swaps, not in-frame switches, and
+              the visitor scanning the list should meet them first. */}
           {hasTimEntries ? (
             <>
               <div className="server-menu-divider" role="separator" aria-label="Second-source channels">
@@ -160,6 +130,46 @@ export const ServerMenu = ({
               })}
             </>
           ) : null}
+          {/* The source divider only exists to close the second-source
+              group above; without tim entries the list stays exactly what
+              it always was. */}
+          {hasTimEntries ? (
+            <div className="server-menu-divider" role="separator" aria-label="Live source servers">
+              Source
+            </div>
+          ) : null}
+          {options.map((stream) => {
+            const quality = streamQuality(stream.name);
+            const isBestKnown = best?.stream === stream;
+            const selected = activeStreamId === stream.streamId;
+            const baseTitle = selected
+              ? `Stream server ${stream.name}`
+              : `Switch the live stream to server ${stream.name}`;
+            const title = quality
+              ? `${baseTitle} - measured ${qualityBadge(quality)}${isBestKnown ? ", best measured server" : ""}`
+              : baseTitle;
+            return (
+              <button
+                key={stream.streamId}
+                type="button"
+                className={`watch-server${selected ? " watch-server-on" : ""}`}
+                onClick={() => {
+                  onChoose(stream);
+                  setOpen(false);
+                  triggerRef.current?.focus();
+                }}
+                aria-pressed={selected}
+                title={title}
+              >
+                <span>{stream.name}</span>
+                {quality !== null ? (
+                  <span className={`watch-server-quality${isBestKnown ? " watch-server-quality-best" : ""}`}>
+                    {qualityBadge(quality)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
