@@ -294,6 +294,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Watch and the sign-in gate each add their own class. A shared inline
+   overflow lock restored the other one's "hidden" and left the home page
+   unable to scroll after Back to home. */
+body.scoreline-auth-lock,
+body.scoreline-watch-lock {
+  overflow: hidden;
+}
+
 button {
   font: inherit;
   color: inherit;

@@ -1,15 +1,18 @@
 import { useConvexAuth } from "convex/react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { closeAlerts, useAlertsRequested } from "../alerts/alertsUi";
 
 const SignInModal = lazy(() => import("./SignInModal"));
 
 /**
  * Sign-in over the screen the visitor opened. Browse can be postponed for
- * this session (Later). The watch screen cannot: it stays covered until
- * they sign in, and the only way off it is Back to home. A successful
- * sign-in lifts the gate either way, so a deep link lands on the watch
- * screen it opened. Nothing here blurs: the frame-wide no-blur rule
- * (base.css) stands.
+ * this session (Later). Back to home postpones it too, so returning from
+ * a stream does not put the card back up. The watch screen cannot be
+ * skipped: it stays covered until they sign in, and the only way off it
+ * is Back to home. The alerts bell summons the card again while signed
+ * out. A successful sign-in lifts the gate either way, so a deep link
+ * lands on the watch screen it opened. Nothing here blurs: the frame-wide
+ * no-blur rule (base.css) stands.
  *
  * The page behind is made inert instead of unmounted, so it stays visible
  * but can neither be clicked nor tabbed into. This is a front-end gate for
@@ -18,8 +21,15 @@ const SignInModal = lazy(() => import("./SignInModal"));
 export const AuthGate = ({ hard, onLeave }: { hard: boolean; onLeave: () => void }) => {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const [postponed, setPostponed] = useState(false);
-  const up = !isLoading && !isAuthenticated && (hard || !postponed);
+  const alertsRequested = useAlertsRequested();
+  const up = !isLoading && !isAuthenticated && (hard || !postponed || alertsRequested);
   const ref = useRef<HTMLDivElement>(null);
+
+  const leave = () => {
+    setPostponed(true);
+    closeAlerts();
+    if (hard) onLeave();
+  };
 
   useEffect(() => {
     const gate = ref.current;
@@ -28,11 +38,10 @@ export const AuthGate = ({ hard, onLeave }: { hard: boolean; onLeave: () => void
       (element): element is HTMLElement => element !== gate && element instanceof HTMLElement && !element.inert,
     );
     for (const element of behind) element.inert = true;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.classList.add("scoreline-auth-lock");
     return () => {
       for (const element of behind) element.inert = false;
-      document.body.style.overflow = overflow;
+      document.body.classList.remove("scoreline-auth-lock");
     };
   }, [up]);
 
@@ -41,7 +50,7 @@ export const AuthGate = ({ hard, onLeave }: { hard: boolean; onLeave: () => void
     <div ref={ref} className="gate">
       <div className="gate-scrim" aria-hidden />
       <Suspense fallback={null}>
-        <SignInModal leaveLabel={hard ? "Back to home" : "Later"} onLeave={hard ? onLeave : () => setPostponed(true)} />
+        <SignInModal leaveLabel={hard ? "Back to home" : "Later"} onLeave={leave} />
       </Suspense>
     </div>
   );

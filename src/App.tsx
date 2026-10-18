@@ -157,13 +157,13 @@ export const App = () => {
   const tablet = useMediaQuery(TABLET_QUERY);
   const sidebar = useSidebarRail(tablet, watching?.href ?? null);
 
-  // Body scroll belongs to whichever surface is on top.
+  // Body scroll belongs to whichever surface is on top. A class, not an
+  // inline overflow, so it cannot restore a stale "hidden" left by the gate.
   useEffect(() => {
     if (watching === null) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.classList.add("scoreline-watch-lock");
     return () => {
-      document.body.style.overflow = previous;
+      document.body.classList.remove("scoreline-watch-lock");
     };
   }, [watching !== null]);
 
