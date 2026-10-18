@@ -875,8 +875,9 @@ export const StreamScreen = ({
       ) : null}
       {embedMode === "page" && zoom ? (
         <button
-          className={`toolbar-button${hideAds ? " player-embed-mode-on" : ""}`}
+          className={`toolbar-button${hideAds ? " ads-guard-on" : ""}`}
           onClick={toggleHideAds}
+          aria-pressed={hideAds}
           aria-label="Ads guard"
           title={
             hideAds
@@ -884,7 +885,7 @@ export const StreamScreen = ({
               : "Ads guard off - click to prefer a mirror with no banner ads"
           }
         >
-          <Icon name="shield" size={16} />
+          <Icon name={hideAds ? "shield-fill" : "shield"} size={16} />
         </button>
       ) : null}
       <button
@@ -895,8 +896,12 @@ export const StreamScreen = ({
       >
         <Icon name="refresh" size={14} />
       </button>
+      {/* Parked in the floating toolbar (watch.css .toolbar-fullscreen,
+          2026-10-18): the embedded player now exposes its own fullscreen.
+          The handler stays, and this same button is still the exit while
+          our shell is already maximized. */}
       <button
-        className="toolbar-button"
+        className="toolbar-button toolbar-fullscreen"
         onClick={toggleFullscreen}
         aria-label={shellMaximized ? "Exit fullscreen" : "Fullscreen"}
         title={
