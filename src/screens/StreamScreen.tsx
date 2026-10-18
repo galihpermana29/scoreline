@@ -10,9 +10,11 @@ import { parseMatchRoute, sourceUrl } from "../lib/route";
 import { cachedPlaySiteDomains, isEmbedOriginAllowlisted } from "../api/source-sites";
 import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
+import { pickNoAdMirrorUrl } from "../api/no-ad-mirror";
 import { fetchMatchStreams, postStreamSwitch, type StreamOption } from "../api/streams";
 import { bestMeasured, compareQuality, qualityBadge, streamQuality } from "../domain/streamQuality";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
+import { useNoAdMirrors } from "../lib/useNoAdMirrors";
 import { downloadCalendarEvent } from "../lib/calendar";
 
 /**
@@ -138,13 +140,21 @@ const EMBED_LOAD_TIMEOUT_MS = 15_000;
  * no crop can reach them. No constant can track a moving anchor, so the
  * app does not try: the leak is theirs to show by default (the visitor
  * consented to the source's ads the moment they opened a mirrored
- * stream), and the optional "Hide ads" toolbar toggle opts into the
- * PAGE_EMBED_MASK overlays - plain black bars over the drift band - at
- * the price of cropping those strips off the picture too. The choice is
- * remembered per browser.
+ * stream). Ads guard (2026-10-18) prefers a mirror whose `common:ad`
+ * object is empty, cropped with PAGE_EMBED_VIDEO_CLEAN because that page
+ * has no banner strip above the video. When no such mirror answers, the
+ * guard falls back to this page and the PAGE_EMBED_MASK bars.
  */
 const PAGE_EMBED_BASE = { width: 750, height: 10000 } as const;
 const PAGE_EMBED_VIDEO = { x: 0, y: 80, w: 750, h: (750 * 9) / 16 } as const;
+/**
+ * Crop for a quiet mirror. Measured 2026-10-18 on an empty-ad brand: the
+ * video iframe sits at the top of the 750-wide column, (0, 0, 750, 422),
+ * with the URL strip and server row below it. The ad-bearing mirror's 80px
+ * strip is absent there. One brand family, one match - if a later empty-ad
+ * brand grows a header, re-measure before trusting this anchor for it.
+ */
+const PAGE_EMBED_VIDEO_CLEAN = { x: 0, y: 0, w: 750, h: (750 * 9) / 16 } as const;
 /**
  * Opt-in black bars over the post-kick drift band. In video-box px.
  * Bottom 40 (user-tuned 2026-10-16 late evening, from a leak-sized 48
@@ -184,7 +194,7 @@ const WATCH_INTRO_KEY = "scoreline:watch-intro";
 const WATCH_INTRO_COPY = {
   title: "Selamat menonton di Scoreline!",
   body:
-    "Perhatian: Iklan masih akan ditampilkan, namun dalam jumlah yang sangat terbatas. Untuk menghilangkannya, silakan klik iklan tersebut atau gunakan fitur Ads Guard yang tersedia di toolbar.",
+    "Perhatian: halaman sumber menampilkan iklan. Ads Guard di toolbar memuat cermin tanpa spanduk. Jika cermin itu tidak menjawab, pita iklan ditutup garis hitam.",
   cta: "Mulai menonton",
 } as const;
 
@@ -249,6 +259,7 @@ export const StreamScreen = ({
   // gave up and shows the retry notice.
   const { origin, reload: reloadOrigin } = useEntryOrigin();
   const { hosts: playerHosts, reload: reloadPlayerHosts } = usePlayerHosts();
+  const { origins: noAdOrigins, resolving: noAdResolving, reload: reloadNoAd } = useNoAdMirrors();
   const [embedEpoch, setEmbedEpoch] = useState(0);
   const [embedFailures, setEmbedFailures] = useState(0);
 
@@ -343,10 +354,91 @@ export const StreamScreen = ({
   }, [playing, embedMode, embedEpoch, playerPick, route?.lang, route?.matchId, match.sportId]);
 
   const playerPickUrl = embedMode === "player" ? (playerPick?.url ?? null) : null;
-  // The frame mounts only on verified ground in player mode; while the
-  // probe is choosing, the loading overlay stands in for it.
-  const embedMounted = embedMode === "page" || playerPickUrl !== null;
-  const embedSrc = playerPickUrl !== null ? playerPickUrl : sourceUrl(href, origin);
+
+  // Ads guard. Off: the entry page, ads and all. On: a mirror whose banner
+  // config is empty, probed before mount. A miss (no such brand, every
+  // origin dead, or a redirect onto a different host) mounts the entry page
+  // and the mask bars. A stall of a quiet frame drops it for this mount;
+  // Retry and toggling the guard try the list again.
+  const [hideAds, setHideAds] = useState(() => {
+    try {
+      return localStorage.getItem(HIDE_ADS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [noAdSuppressed, setNoAdSuppressed] = useState(false);
+  const [noAdPick, setNoAdPick] = useState<{ key: string; url: string | null } | null>(null);
+  const [quietNotice, setQuietNotice] = useState<string | null>(null);
+  const noAdKey = `${embedEpoch}:${href}:${noAdOrigins.join("|")}`;
+  useEffect(() => {
+    setNoAdSuppressed(false);
+  }, [href]);
+  useEffect(() => {
+    if (quietNotice === null) return;
+    const timer = window.setTimeout(() => setQuietNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [quietNotice]);
+  useEffect(() => {
+    if (!playing || embedMode !== "page" || !hideAds) return;
+    if (noAdPick !== null && noAdPick.key === noAdKey) return;
+    if (noAdSuppressed) {
+      setNoAdPick({ key: noAdKey, url: null });
+      return;
+    }
+    if (noAdOrigins.length === 0) {
+      if (noAdResolving) return;
+      setNoAdPick({ key: noAdKey, url: null });
+      return;
+    }
+    let cancelled = false;
+    const rotateBy = embedEpoch % noAdOrigins.length;
+    const candidates = [...noAdOrigins.slice(rotateBy), ...noAdOrigins.slice(0, rotateBy)];
+    void pickNoAdMirrorUrl(candidates, href).then((pick) => {
+      if (cancelled) return;
+      if (pick.kind === "embed") {
+        setNoAdPick({ key: noAdKey, url: pick.url });
+        return;
+      }
+      setNoAdPick({ key: noAdKey, url: null });
+      setQuietNotice("The quieter mirror did not answer - showing the usual page, with the banner bands masked.");
+    });
+    return () => {
+      cancelled = true;
+    };
+    // noAdPick is the guard that makes a re-run for the same key a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, embedMode, hideAds, embedEpoch, href, noAdKey, noAdSuppressed, noAdResolving]);
+
+  const noAdPending =
+    playing && embedMode === "page" && hideAds && !noAdSuppressed && (noAdPick === null || noAdPick.key !== noAdKey);
+  const noAdUrl =
+    playing && embedMode === "page" && hideAds && !noAdPending && noAdPick !== null && noAdPick.key === noAdKey
+      ? noAdPick.url
+      : null;
+  const toggleHideAds = () => {
+    setNoAdSuppressed(false);
+    setQuietNotice(null);
+    setHideAds((current) => {
+      try {
+        localStorage.setItem(HIDE_ADS_KEY, current ? "0" : "1");
+      } catch {
+        // Private mode: the preference just does not persist.
+      }
+      return !current;
+    });
+    if (playing) {
+      setEmbedReady(false);
+      setEmbedEpoch((epoch) => epoch + 1);
+    }
+  };
+
+  // The frame mounts only on verified ground in player mode, and only after
+  // the quiet-mirror probe in page mode when Ads guard is on. While a probe
+  // is choosing, the loading overlay stands in for the frame.
+  const embedMounted = embedMode === "page" ? !noAdPending : playerPickUrl !== null;
+  const embedSrc = playerPickUrl ?? noAdUrl ?? sourceUrl(href, origin);
+  const pageVideo = noAdUrl !== null ? PAGE_EMBED_VIDEO_CLEAN : PAGE_EMBED_VIDEO;
 
   // The stream-server chips for the page embed. The list is their own data
   // (see src/api/streams.ts: /api/match/detail field-2 entries), and a chip
@@ -543,27 +635,6 @@ export const StreamScreen = ({
     setZoomKickDone(true);
   };
 
-  // The opt-in counterpart to the crop: by default the source's ads are
-  // shown as-is (the visitor consented to them by watching this embed at
-  // all), and only a visitor who flips this toggle gets the PAGE_EMBED_MASK
-  // black bars over the bands their layout drifts into the crop.
-  const [hideAds, setHideAds] = useState(() => {
-    try {
-      return localStorage.getItem(HIDE_ADS_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const toggleHideAds = () =>
-    setHideAds((current) => {
-      try {
-        localStorage.setItem(HIDE_ADS_KEY, current ? "0" : "1");
-      } catch {
-        // Private mode: the preference just does not persist.
-      }
-      return !current;
-    });
-
   // The shell's live size drives the crop's scale, so the video keeps
   // filling it through resizes and the fullscreen switch. The box is read
   // synchronously on mount - the shell already has its layout by the time
@@ -596,9 +667,9 @@ export const StreamScreen = ({
   const pageZoomStyle: CSSProperties | undefined = (() => {
     if (!zoomCropWanted || !zoomKickDone || shellBox === null) return undefined;
     const { w, h } = shellBox;
-    const scale = Math.max(w / PAGE_EMBED_VIDEO.w, h / PAGE_EMBED_VIDEO.h);
-    const tx = w / 2 - (PAGE_EMBED_VIDEO.x + PAGE_EMBED_VIDEO.w / 2) * scale;
-    const ty = h / 2 - (PAGE_EMBED_VIDEO.y + PAGE_EMBED_VIDEO.h / 2) * scale;
+    const scale = Math.max(w / pageVideo.w, h / pageVideo.h);
+    const tx = w / 2 - (pageVideo.x + pageVideo.w / 2) * scale;
+    const ty = h / 2 - (pageVideo.y + pageVideo.h / 2) * scale;
     return {
       width: PAGE_EMBED_BASE.width,
       height: PAGE_EMBED_BASE.height,
@@ -665,31 +736,41 @@ export const StreamScreen = ({
   const remountEmbed = (fresh: boolean) => {
     setEmbedReady(false);
     const reloads: Promise<unknown>[] = [
-      // The page mode embeds the entry origin only, but reloading both costs
-      // one extra request and keeps the player list warm for a mode switch.
-      // Neither resolver throws by contract; the catches are hard guards.
+      // Page mode may be on a quiet mirror or the entry origin. Reloading
+      // all three costs one extra request and keeps every list warm.
+      // None of the resolvers throw by contract; the catches are hard guards.
       reloadOrigin(fresh).catch(() => undefined),
       reloadPlayerHosts(fresh).catch(() => undefined),
+      reloadNoAd(fresh).catch(() => undefined),
     ];
     void Promise.all(reloads).finally(() => setEmbedEpoch((epoch) => epoch + 1));
   };
 
   const retryEmbed = () => {
     setEmbedFailures(0);
+    setNoAdSuppressed(false);
     remountEmbed(true);
   };
 
   // Watchdog: a mounted frame that never signals load within the window is
-  // treated as a dead or rotated host. First stall re-resolves the entry
-  // origin and the player hosts from scratch and remounts once; a second
-  // stall stops retrying on its own and swaps the frame for the explicit
-  // retry notice.
+  // treated as a dead or rotated host. A quiet mirror that stalls is dropped
+  // for this mount and the entry page takes over (mask included); that does
+  // not spend the entry page's own retry. Otherwise the first stall
+  // re-resolves from scratch and remounts once, and a second stall stops
+  // retrying and swaps the frame for the explicit retry notice.
   useEffect(() => {
     if (!playing || embedFailures >= 2 || embedReady) return;
-    // Nothing to watch yet in player mode: the probe is still choosing the
-    // host, and its own candidates carry the timeouts.
+    // Nothing to watch yet while a probe is still choosing the host.
     if (embedMode === "player" && playerPickUrl === null) return;
+    if (noAdPending) return;
     const timer = window.setTimeout(() => {
+      if (noAdUrl !== null) {
+        setQuietNotice("The quieter mirror did not answer - showing the usual page, with the banner bands masked.");
+        setNoAdSuppressed(true);
+        setEmbedReady(false);
+        setEmbedEpoch((epoch) => epoch + 1);
+        return;
+      }
       if (embedFailures === 0) {
         setEmbedFailures(1);
         remountEmbed(true);
@@ -701,7 +782,7 @@ export const StreamScreen = ({
     // reloadOrigin is a fresh closure each render but stable in behaviour;
     // epoch is included so a remount re-arms the timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, embedReady, embedEpoch, embedFailures, reloadOrigin]);
+  }, [playing, embedReady, embedEpoch, embedFailures, reloadOrigin, noAdPending, noAdUrl]);
 
   /**
    * Maximize the shell in the best mode the browser offers. Native first -
@@ -799,8 +880,8 @@ export const StreamScreen = ({
           aria-label="Ads guard"
           title={
             hideAds
-              ? "Ads guard on: the banner bands that drift into the crop are masked black, at the price of cropping those strips off the picture - click to show the source's ads"
-              : "Ads guard off - click to mask the banner bands that drift into the crop"
+              ? "Ads guard on: prefers a mirror with no banner ads, and masks the usual page if that mirror is down - click to show the source's ads"
+              : "Ads guard off - click to prefer a mirror with no banner ads"
           }
         >
           <Icon name="shield" size={16} />
@@ -880,7 +961,9 @@ export const StreamScreen = ({
                   title={
                     embedMode === "player"
                       ? "Live bare player embedded from the source site's player host, verified before mounting"
-                      : "Live match page embedded from the source site"
+                      : noAdUrl !== null
+                        ? "Live match page from a mirror whose banner config is empty"
+                        : "Live match page embedded from the source site"
                   }
                   sandbox="allow-scripts allow-same-origin"
                   allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
@@ -903,7 +986,7 @@ export const StreamScreen = ({
               {embedMode === "page" && zoom ? (
                 <div aria-hidden className={`player-embed-kick-cover${zoomKickDone ? " is-done" : ""}`} />
               ) : null}
-              {pageZoomStyle !== undefined && embedMounted && hideAds ? (
+              {pageZoomStyle !== undefined && embedMounted && hideAds && noAdUrl === null ? (
                 <>
                   {/* Opt-in drift covers: their framed layout can still
                       reflow the video anchor inside the crop after their
@@ -925,7 +1008,7 @@ export const StreamScreen = ({
               {!embedReady ? (
                 <div className="player-embed-loading" role="status">
                   <span className="player-note-dot" />
-                  {embedMode === "player" && !embedMounted
+                  {(embedMode === "player" && !embedMounted) || noAdPending
                     ? "Verifying the live source…"
                     : embedFailures === 0
                       ? "Connecting to live source…"
@@ -946,6 +1029,11 @@ export const StreamScreen = ({
               {playerNotice !== null ? (
                 <div className="player-embed-denied" role="status">
                   {playerNotice}
+                </div>
+              ) : null}
+              {quietNotice !== null ? (
+                <div className="player-embed-denied" role="status">
+                  {quietNotice}
                 </div>
               ) : null}
             </>
