@@ -340,6 +340,7 @@ export const App = () => {
                   layoutId={phone ? null : (location.state.origin ?? null)}
                   autoplay={location.state.autoplay === true}
                   related={related}
+                  peers={feed.matches}
                   onExit={exitWatch}
                   onOpen={openMatch}
                   onMore={setSelected}
