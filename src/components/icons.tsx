@@ -38,6 +38,7 @@ export type IconName =
   | "moon"
   | "tv"
   | "bell"
+  | "person"
   | "check"
   | "refresh";
 
@@ -178,6 +179,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect {...STROKE} x="2.4" y="3.4" width="15.2" height="10.6" rx="2.2" />
       <path {...STROKE} d="M10 14v2.6M7 17.6h6" />
+    </>
+  ),
+  person: (
+    <>
+      <circle {...STROKE} cx="10" cy="6.6" r="2.7" />
+      <path {...STROKE} d="M4.6 16.4c.6-2.8 2.6-4.2 5.4-4.2s4.8 1.4 5.4 4.2" />
     </>
   ),
   bell: (

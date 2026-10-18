@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { fetchStandings, tableSpec } from "../api/standings";
 import { BellButton } from "../alerts/BellButton";
+import { SignInButton } from "../auth/SignInButton";
 import { StandingsSkeleton, StandingsTable } from "../components/StandingsTable";
 import { Hero, LeagueTile, MatchCard, PromoBanner, Shelf, ShelfSkeleton, WideCard, type OpenMatch } from "../components/tv";
 import { Icon } from "../components/icons";
@@ -162,6 +163,7 @@ export const HomeScreen = ({
         <SearchBox route={route} className="search-field-floating" />
         {phone ? (
           <>
+            <SignInButton variant="pill" />
             <BellButton variant="pill" />
             <ThemeToggle variant="pill" />
           </>
