@@ -99,7 +99,7 @@ Shut Brave and the harness server down when done.
 ## Verification
 
 - `npm run typecheck`.
-- In the real app (dev server, port 5188; sign in through the auth gate - `MAIL_DRY_RUN=1` in the Convex env prints the code to the Convex logs), open a live match with several servers and press play:
+- In the real app (dev server, port 5188; a guest can open a match, sign-in is optional), open a live match with several servers and press play:
   - badges render on known chips, none on unknown ones, at desktop width and at 390px phone width (pixel-check the row alignment against the `--gutter` inset);
   - if part 3 ships: the best known chip lights up on its own once the crop lands, and the probe (attached to the app tab instead of the harness) shows the player decoding that server's measured size;
   - picking another chip by hand still works and the auto-switch does not fight it.

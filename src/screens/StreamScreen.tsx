@@ -14,6 +14,7 @@ import { pickNoAdMirrorUrl } from "../api/no-ad-mirror";
 import { fetchMatchStreams, postStreamSwitch, type StreamOption } from "../api/streams";
 import { bestMeasured, compareQuality, streamQuality } from "../domain/streamQuality";
 import { ServerMenu } from "../components/ServerMenu";
+import { SignInButton } from "../auth/SignInButton";
 import { usePlayerSnap } from "../lib/usePlayerSnap";
 import { WatchLayerScrollContext } from "./WatchLayer";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
@@ -943,6 +944,7 @@ export const StreamScreen = ({
           <span className="back-pill-label">Back</span>
         </button>
         <span className="watch-top-title">{matchLabel(match)}</span>
+        <SignInButton variant="pill" className="watch-signin" />
         <span className={`stream-flag stream-flag-${flag.tone}`} title={flag.title}>
           {flag.label}
         </span>

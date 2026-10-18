@@ -9,19 +9,23 @@ Re-verify before relying on one, per the rule at the top of `AGENTS.md`.
 
 ## Access
 
-### The sign-in gate
+### Sign-in is optional
 
-Every screen is behind a hard gate.
-A signed-out visitor sees the screen they opened, dimmed under a black scrim at partial opacity, with the sign-in modal on top.
-The page stays visible behind the scrim so the visitor sees what they are signing in for.
+A guest can open every screen, including a watch URL, without an account.
+The stream embed mounts for a guest the same way it does for a signed-in viewer.
+
+A Sign in button opens the modal.
+On a wide screen it is a sidebar row.
+On a phone it sits with the home controls, floats on the other browse screens, and sits in the watch header.
+Not now dismisses the modal and leaves the visitor on the screen they already opened.
+The alerts bell opens the same modal while signed out, because alerts belong to an account.
+After a successful sign-in from the bell, the alerts picker opens.
+
+While the modal is up, the page behind stays visible under a black scrim at partial opacity and is inert.
 There is no blur anywhere: the no-blur rule in `src/styles/base.css` stands, because a measured TV session showed backdrop blur degrading the whole UI over a long stream.
+The modal is a front-end prompt for accounts and alerts, not protection for the feed.
 
-The gate is a front-end gate.
-It exists for accounts and alerts, not to protect the feed, so the page rendering behind it is accepted.
-The watch screen never mounts the stream embed while the gate is up, so nothing streams behind it and the embed costs nothing until the viewer is in.
-
-A deep link survives sign-in.
-Opening a watch URL signed out shows the gate over that watch screen, and a successful sign-in lands on that same screen.
+Signing in on a watch URL keeps the visitor on that screen.
 
 ### One modal for login and signup
 
@@ -42,7 +46,8 @@ The QR lets a TV, or any wide screen, sign in by approving from a phone.
 1. The modal creates a pairing in Convex: a short display code (for example `K7P-4QX`) and a secret that only this browser holds.
    A pairing expires after 5 minutes and is used once; the modal replaces an expired one on its own.
 2. The QR encodes `{APP_ORIGIN}/link?code=K7P-4QX`, and the modal shows the code in text beside it.
-3. The phone opens `/link`, passes the same gate (signing in there if it is not already), and shows "Sign in on your TV?" with the code and an Approve button.
+3. The phone opens `/link` as a guest and shows "Sign in on your TV?" with the code and an Approve button.
+   Approve asks them to sign in first if this phone is not already signed in.
    The code shown on both screens is what stops someone from tricking a viewer into approving a stranger's device.
 4. Approve marks the pairing approved for the phone's user.
    The TV holds a live Convex query on its pairing, sees the approval immediately, and signs in through a custom Convex Auth credentials provider that checks the secret, the approval, the expiry, and that the pairing is unused.
@@ -59,7 +64,7 @@ These map to Convex Auth's inactivity and total session durations.
 
 ### Where they are made
 
-Right after an account's very first sign-in, the gate turns into the alerts picker.
+Right after an account's very first sign-in, the alerts picker opens.
 Save stores the choices, Skip stores an empty choice, and either way the account is marked as prompted and the picker never opens on its own again.
 A first sign-in that lands on a watch screen defers the picker until the viewer leaves that screen.
 

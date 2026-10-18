@@ -1,22 +1,29 @@
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { Icon } from "../components/icons";
+import { openSignIn } from "../auth/signInUi";
 import { navigate } from "../lib/router";
 
 /**
- * The phone's half of QR pairing, opened from the TV's QR code. It sits
- * behind the same gate as every screen, so a signed-out phone signs in
- * first. The code shown here and on the TV is what stops someone from
- * tricking a viewer into approving a stranger's device.
+ * The phone's half of QR pairing, opened from the TV's QR code. A guest
+ * can open the page. Approve needs the phone's account, so a signed-out
+ * visitor is asked to sign in, then taps Approve. The code
+ * shown here and on the TV is what stops someone from tricking a viewer
+ * into approving a stranger's device.
  */
 export const LinkScreen = ({ code }: { code: string }) => {
+  const { isAuthenticated } = useConvexAuth();
   const clean = code.trim().toUpperCase();
   const waiting = useQuery(api.pairing.peek, clean === "" ? "skip" : { code: clean });
   const approve = useMutation(api.pairing.approve);
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
 
   const onApprove = async () => {
+    if (!isAuthenticated) {
+      openSignIn();
+      return;
+    }
     setState("busy");
     try {
       await approve({ code: clean });
@@ -51,7 +58,7 @@ export const LinkScreen = ({ code }: { code: string }) => {
             <p>Only approve if this code is showing on your TV right now.</p>
             <div className="pair-code link-code">{clean}</div>
             <button className="button-primary" onClick={() => void onApprove()} disabled={state === "busy" || waiting === undefined}>
-              {state === "busy" ? "Approving..." : "Approve"}
+              {state === "busy" ? "Approving..." : isAuthenticated ? "Approve" : "Sign in to approve"}
             </button>
             <button className="button-tinted" onClick={() => navigate("/", { replace: true })}>
               Not now

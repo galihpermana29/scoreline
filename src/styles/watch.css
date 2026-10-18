@@ -66,6 +66,10 @@
   margin-bottom: 12px;
 }
 
+.watch-signin {
+  display: none;
+}
+
 .watch-top-title {
   flex: 1;
   min-width: 0;
@@ -477,7 +481,17 @@
   }
 
   .watch-top .stream-flag {
+    margin-left: 0;
+  }
+
+  /* Desktop keeps Sign in in the sidebar. On a phone the sidebar is gone
+     and the watch layer covers the floating browse control, so the header
+     carries it and the flag sits beside it. */
+  .watch-top .watch-signin {
+    display: grid;
     margin-left: auto;
+    width: 36px;
+    height: 36px;
   }
 
   .watch-stage {

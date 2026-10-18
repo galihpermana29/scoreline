@@ -4,6 +4,7 @@ import { TOP_CATEGORIES, extraCategories, type Category } from "../domain/catego
 import { SPORT_ICON, type Match } from "../domain/match";
 import { browsePath, navigate, type Route } from "../lib/router";
 import { BellButton } from "../alerts/BellButton";
+import { SignInButton } from "../auth/SignInButton";
 import { Icon, type IconName } from "./icons";
 import { ScorelineBadge } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
@@ -228,6 +229,7 @@ export const Sidebar = ({
       </LayoutGroup>
 
       <div className="sidebar-bottom">
+        <SignInButton variant="row" />
         <BellButton variant="row" />
         <button
           className="nav-item"

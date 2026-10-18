@@ -1,34 +1,36 @@
 import { useConvexAuth } from "convex/react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { closeAlerts, useAlertsRequested } from "../alerts/alertsUi";
+import { closeSignIn, useSignInRequested } from "./signInUi";
 
 const SignInModal = lazy(() => import("./SignInModal"));
 
 /**
- * Sign-in over the screen the visitor opened. Browse can be postponed for
- * this session (Later). Back to home postpones it too, so returning from
- * a stream does not put the card back up. The watch screen cannot be
- * skipped: it stays covered until they sign in, and the only way off it
- * is Back to home. The alerts bell summons the card again while signed
- * out. A successful sign-in lifts the gate either way, so a deep link
- * lands on the watch screen it opened. Nothing here blurs: the frame-wide
- * no-blur rule (base.css) stands.
+ * Sign-in only when the visitor asks. Every screen, including a watch
+ * URL, works for a guest. The Sign in button and the alerts bell (alerts
+ * belong to an account) are what raise this modal. Not now dismisses it
+ * and leaves them on the screen they already opened. A successful sign-in
+ * lifts it, so a deep link stays on the watch screen it opened. Nothing
+ * here blurs: the frame-wide no-blur rule (base.css) stands.
  *
  * The page behind is made inert instead of unmounted, so it stays visible
- * but can neither be clicked nor tabbed into. This is a front-end gate for
- * accounts and alerts, not protection for the feed.
+ * but can neither be clicked nor tabbed into while the modal is up. This
+ * is a front-end prompt for accounts and alerts, not protection for the feed.
  */
-export const AuthGate = ({ hard, onLeave }: { hard: boolean; onLeave: () => void }) => {
+export const AuthGate = () => {
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const [postponed, setPostponed] = useState(false);
   const alertsRequested = useAlertsRequested();
-  const up = !isLoading && !isAuthenticated && (hard || !postponed || alertsRequested);
+  const signInRequested = useSignInRequested();
+  const up = !isLoading && !isAuthenticated && (signInRequested || alertsRequested);
   const ref = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (isAuthenticated) closeSignIn();
+  }, [isAuthenticated]);
+
   const leave = () => {
-    setPostponed(true);
+    closeSignIn();
     closeAlerts();
-    if (hard) onLeave();
   };
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export const AuthGate = ({ hard, onLeave }: { hard: boolean; onLeave: () => void
     <div ref={ref} className="gate">
       <div className="gate-scrim" aria-hidden />
       <Suspense fallback={null}>
-        <SignInModal leaveLabel={hard ? "Back to home" : "Later"} onLeave={leave} />
+        <SignInModal leaveLabel="Not now" onLeave={leave} />
       </Suspense>
     </div>
   );

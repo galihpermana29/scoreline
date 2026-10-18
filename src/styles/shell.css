@@ -580,6 +580,22 @@
   border-radius: 50%;
 }
 
+/* Phone screens other than home have no hero cluster, so the account
+   control floats in the same corner. Home draws its own pill in the
+   search row, and the watch header draws one inside the watch layer. */
+.signin-floating {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  right: var(--gutter);
+  z-index: 31;
+}
+
+@media (max-width: 739px) {
+  .page-head {
+    padding-right: calc(var(--gutter) + 52px);
+  }
+}
+
 .search-field-floating {
   width: min(100%, 520px);
   height: 42px;

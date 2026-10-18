@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchLiveExtraSports, fetchLivePopular } from "./api/aelive";
 import { AlertsHost } from "./alerts/AlertsHost";
 import { AuthGate } from "./auth/AuthGate";
-import { RequireAuth } from "./auth/RequireAuth";
+import { SignInButton } from "./auth/SignInButton";
 import { MatchSheet } from "./components/MatchSheet";
 import { Sidebar, TabBar } from "./components/Sidebar";
 import { EASE_OUT, type OpenMatch } from "./components/tv";
@@ -327,24 +327,23 @@ export const App = () => {
         </main>
 
         {phone && watching === null ? <TabBar route={shellRoute} /> : null}
+        {phone && watching === null && browseRoute.kind !== "home" ? <SignInButton variant="pill" className="signin-floating" /> : null}
 
         <AnimatePresence>
           {watching !== null ? (
             <WatchLayer key="watch" phone={phone} onDismiss={exitWatch}>
               {streamMatch !== null ? (
-                <RequireAuth fallback={<StreamSkeleton onExit={exitWatch} />}>
-                  <StreamScreen
-                    key={streamMatch.id}
-                    match={streamMatch}
-                    href={watching.href}
-                    layoutId={phone ? null : (location.state.origin ?? null)}
-                    autoplay={location.state.autoplay === true}
-                    related={related}
-                    onExit={exitWatch}
-                    onOpen={openMatch}
-                    onMore={setSelected}
-                  />
-                </RequireAuth>
+                <StreamScreen
+                  key={streamMatch.id}
+                  match={streamMatch}
+                  href={watching.href}
+                  layoutId={phone ? null : (location.state.origin ?? null)}
+                  autoplay={location.state.autoplay === true}
+                  related={related}
+                  onExit={exitWatch}
+                  onOpen={openMatch}
+                  onMore={setSelected}
+                />
               ) : feed.loading ? (
                 <StreamSkeleton onExit={exitWatch} />
               ) : (
@@ -356,7 +355,7 @@ export const App = () => {
 
         <MatchSheet match={selected} onClose={closeSheet} onWatch={watchFromSheet} />
         <AlertsHost watching={watching !== null} />
-        <AuthGate hard={watching !== null} onLeave={exitWatch} />
+        <AuthGate />
       </div>
     </MotionConfig>
   );
