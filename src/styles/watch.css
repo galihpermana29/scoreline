@@ -951,6 +951,28 @@ body.scoreline-shell-max .watch-layer {
   opacity: 1;
 }
 
+/* The "Load with their ads" affordance inside the same pill: a quiet
+   action button (the sandboxed default's escape hatch, docs/tim-ad-popups.md)
+   - understated next to the text, full strength on hover/focus. */
+.player-tim-notice-action {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+.player-tim-notice-action:hover,
+.player-tim-notice-action:focus-visible {
+  opacity: 1;
+}
+
 /* Retry card shown in place of the frame when the live source stalls twice. */
 .player-embed-failed {
   position: absolute;
