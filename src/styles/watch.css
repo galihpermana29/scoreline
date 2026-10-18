@@ -71,8 +71,8 @@
   min-width: 0;
   overflow: hidden;
   text-align: center;
-  font-size: 15px;
-  font-weight: 600;
+  font: var(--style-subhead-em);
+  letter-spacing: var(--track-subhead);
   color: var(--label-2);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -87,9 +87,8 @@
   border-radius: 14px;
   background: var(--fill);
   color: var(--label-2);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font: var(--style-site-badge);
+  letter-spacing: var(--track-site-badge);
   white-space: nowrap;
 }
 
@@ -173,9 +172,8 @@
   align-items: center;
   gap: 6px;
   color: var(--label-3);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font: var(--style-site-badge);
+  letter-spacing: var(--track-site-badge);
   text-transform: uppercase;
 }
 
@@ -191,8 +189,8 @@
   border-radius: 16px;
   background: var(--fill);
   color: var(--label-2);
-  font-size: 13px;
-  font-weight: 600;
+  font: var(--style-footnote-em);
+  letter-spacing: var(--track-footnote);
   white-space: nowrap;
   transition:
     background-color 150ms ease,
@@ -227,15 +225,14 @@
 .watch-server-quality {
   margin-left: 7px;
   color: var(--label-3);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   font-variant-numeric: tabular-nums;
 }
 
 .watch-server-quality-best {
   color: var(--label-2);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* The active chip inverts its colors (accent fill/foreground), so the
@@ -266,8 +263,8 @@
 
 .watch-title {
   margin: 8px 0 0;
-  font: 800 clamp(22px, 2.6vw, 34px) / 1.1 var(--font-display);
-  letter-spacing: -0.022em;
+  font: 600 clamp(24px, 2.6vw, 32px) / 1.125 var(--font-display);
+  letter-spacing: 0.004em;
   text-wrap: balance;
 }
 
@@ -341,17 +338,35 @@
 
 /* Icon-only controls (titles carry the words): every embed control
    collapses to a compact square so the whole set - mode group, zoom,
-   ad mask, refresh, fullscreen, stop - fits one row on a TV without
-   wrapping. The stopped-state CTAs (Play Live, Details) keep their
-   labels: they use different classes and stay legible. flex: none keeps
-   flexing from ever squeezing them, and the mode buttons flex-centre
-   their glyph so old engines cannot baseline-drop it. */
+   ad mask, refresh, stop - fits one row on a TV without wrapping.
+   Fullscreen is parked (see .toolbar-fullscreen). The stopped-state
+   CTAs (Play Live, Details) keep their labels: they use different
+   classes and stay legible. flex: none keeps flexing from ever
+   squeezing them, and the mode buttons flex-centre their glyph so old
+   engines cannot baseline-drop it. */
 .watch-toolbar .toolbar-button {
   flex: none;
   width: 36px;
   height: 36px;
   padding: 0;
   justify-content: center;
+}
+
+/* Parked 2026-10-18: the embedded player now has its own fullscreen, so
+   the toolbar control is hidden. The button and toggleFullscreen stay;
+   delete this rule to show it again. The in-shell bar, mounted only
+   while our shell is already maximized, is outside .watch-toolbar and
+   keeps the exit. */
+.watch-toolbar .toolbar-fullscreen {
+  display: none;
+}
+
+/* Ads guard is a toggle with no segmented sibling, so the on state lives
+   on the glyph itself: a filled shield in the system green. The same
+   class covers the fullscreen bar, whose buttons pin their own white. */
+.watch-toolbar .toolbar-button.ads-guard-on,
+.player-embed-bar .toolbar-button.ads-guard-on {
+  color: var(--green);
 }
 
 .watch-toolbar .player-embed-mode {
@@ -506,8 +521,8 @@
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   color: rgba(255, 255, 255, 0.82);
-  font-size: 12px;
-  font-weight: 500;
+  font: var(--style-site-caption);
+  letter-spacing: var(--track-site-caption);
 }
 
 @media (max-width: 739px) {
@@ -828,8 +843,10 @@ body.scoreline-shell-max .watch-layer {
   max-width: 78%;
   text-align: center;
   font-size: clamp(20px, 3.4vw, 42px);
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  font-weight: 600;
+  font-family: var(--font-display);
+  line-height: 1.1;
+  letter-spacing: 0em;
   text-wrap: balance;
 }
 
@@ -869,10 +886,11 @@ body.scoreline-shell-max .watch-layer {
 .player-count-score,
 .player-count-time {
   font-size: clamp(36px, 6.5vw, 76px);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: -0.009em;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -888,9 +906,8 @@ body.scoreline-shell-max .watch-layer {
 
 .player-count-hint {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   text-transform: uppercase;
 }
 
@@ -911,16 +928,14 @@ body.scoreline-shell-max .watch-layer {
 
 .stream-meta-cell dt {
   color: var(--label-2);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font: var(--style-site-caption);
+  letter-spacing: var(--track-site-caption);
 }
 
 .stream-meta-cell dd {
   margin: 4px 0 0;
-  font-size: 15px;
-  font-weight: 500;
+  font: var(--style-subhead-em);
+  letter-spacing: var(--track-subhead);
 }
 
 @media (max-width: 739px) {
@@ -1053,15 +1068,14 @@ a.stream-route::after {
 
 .watch-intro h2 {
   margin: 0;
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 1.3;
+  font: var(--style-display-19);
+  letter-spacing: var(--track-display-19);
 }
 
 .watch-intro p {
   margin: 0;
-  font-size: 13.5px;
-  line-height: 1.55;
+  font: var(--style-body-read);
+  letter-spacing: var(--track-body-read);
   color: var(--label-2);
 }
 
@@ -1243,18 +1257,17 @@ a.stream-route::after {
 
 .session-title {
   max-width: 100%;
-  font-size: 19px;
-  font-weight: 800;
-  line-height: 1.25;
+  font: var(--style-display-19);
+  letter-spacing: var(--track-display-19);
   text-align: center;
   overflow-wrap: break-word;
 }
 
 .big-score,
 .big-time {
-  font: 800 clamp(34px, 7vw, 56px) / 1 var(--font-rounded);
+  font: 600 clamp(34px, 7vw, 56px) / 1.07143 var(--font-display);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: -0.005em;
   white-space: nowrap;
 }
 
@@ -1282,9 +1295,8 @@ a.stream-route::after {
 
 .team-column-name {
   max-width: 100%;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.2;
+  font: var(--style-callout-em);
+  letter-spacing: var(--track-callout);
   overflow-wrap: break-word;
   hyphens: auto;
 }
@@ -1295,10 +1307,8 @@ a.stream-route::after {
 
 .team-column-side {
   color: var(--label-2);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: var(--style-site-caption);
+  letter-spacing: var(--track-site-caption);
 }
 
 .detail-content {
@@ -1321,8 +1331,8 @@ a.stream-route::after {
 
 .detail-heading {
   margin: 26px 0 12px;
-  font: 700 20px/1.2 var(--font-display);
-  letter-spacing: -0.2px;
+  font: var(--style-title3-em);
+  letter-spacing: var(--track-title3);
 }
 
 .info-grid {
@@ -1340,16 +1350,14 @@ a.stream-route::after {
 
 .info-cell dt {
   color: var(--label-2);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font: var(--style-site-caption);
+  letter-spacing: var(--track-site-caption);
 }
 
 .info-cell dd {
   margin: 4px 0 0;
-  font-size: 16px;
-  font-weight: 500;
+  font: var(--style-callout-em);
+  letter-spacing: var(--track-callout);
 }
 
 /* Phone sheet: two columns; the first (kick-off) cell is the long one and

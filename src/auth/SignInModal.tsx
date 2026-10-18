@@ -25,7 +25,7 @@ const messageOf = (error: unknown, fallback: string): string => {
  * every later one opens it. Wide screens, TV included, also get the QR
  * pairing column; a phone cannot scan its own screen, so it gets the form only.
  */
-export default function SignInModal() {
+export default function SignInModal({ leaveLabel, onLeave }: { leaveLabel: string; onLeave: () => void }) {
   const phone = useMediaQuery(PHONE_QUERY);
   const [step, setStep] = useState<Step>({ kind: "email" });
 
@@ -48,6 +48,9 @@ export default function SignInModal() {
         ) : (
           <CodeStep email={step.email} onBack={() => setStep({ kind: "email" })} />
         )}
+        <button type="button" className="gate-leave" onClick={onLeave}>
+          {leaveLabel}
+        </button>
       </div>
       {phone ? null : (
         <div className="gate-pair-side">

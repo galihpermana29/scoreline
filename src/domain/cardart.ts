@@ -1,9 +1,9 @@
 import type { Match } from "./match";
 
 /**
- * Flat CSS thumbnails for match cards - the "ARSENAL / PREMIER LEAGUE" style
- * (agreed 2026-10-17): a solid colour field with a big identity line and a
- * small context line, rendered as DOM instead of an image. Hero, jumbotron,
+ * Flat CSS thumbnails for match cards. The big line is capitalized
+ * ("Arsenal", "Basketball") and the small line stays uppercase
+ * ("PREMIER LEAGUE"), rendered as DOM instead of an image. Hero, jumbotron,
  * watch backdrops and the promo slot keep the photo pools (`artwork.ts`);
  * this module only powers the 16:9 shelf cards.
  *
@@ -15,13 +15,13 @@ import type { Match } from "./match";
  *   "Liga Utama Inggris".
  * - Other sports: the sport label big, the fixture (or session title) small.
  *   Residual: sport 90 is the feed's whole misc bucket behind the "Horse
- *   Racing" label, so a golf round in that bucket reads HORSE RACING here.
+ *   Racing" label, so a golf round in that bucket reads "Horse Racing" here.
  * - Type: the big line's size ceiling is the "MANCHESTER CITY" card, per the
  *   user (2026-10-17) - short names render that size, long names step down.
- * - Colour: twelve club themes (background, title ink, subtitle ink, and an
- *   optional accent bar), sampled from the user's reference cards in
- *   public/football/primary-thumbnails/. A popular club always wears its
- *   own theme; every other card rolls one of the twelve once per page load,
+ * - Colour: the finish swatches on the iPhone lineup cards at
+ *   apple.com/id/iphone (sampled 2026-10-18). Light finishes take Apple's
+ *   dark label pair, dark finishes the light pair. A popular club always
+ *   wears the same finish; every other card rolls one once per page load,
  *   spread per match - the same card keeps its colours across the 60s feed
  *   re-renders, and a hard refresh re-rolls everything (the same feel the
  *   photo pools already have via artwork's LOAD_SEED).
@@ -37,34 +37,50 @@ export type ThumbTheme = {
   bar?: string;
 };
 
+/** Apple's label pair on a light tile, and the light pair on a dark tile. */
+const ON_LIGHT = { ink: "#1d1d1f", sub: "#6e6e73" } as const;
+const ON_DARK = { ink: "#f5f5f7", sub: "#86868b" } as const;
+
+const light = (bg: string): ThumbTheme => ({ bg, ...ON_LIGHT });
+const dark = (bg: string): ThumbTheme => ({ bg, ...ON_DARK });
+
+/**
+ * Finishes from the lineup cards, in the order their swatches appear.
+ * Ultramarine, iPhone 18 Pro red, sage, iPhone Duo night sky, pink,
+ * iPhone Air black, teal, graphite, mist blue, 17e blush, lavender, Air gold.
+ */
 const THEMES = {
-  arsenal: { bg: "#ef0107", ink: "#ffffff", sub: "#fab3b5" },
-  chelsea: { bg: "#034694", ink: "#ffffff", sub: "#b4c8df" },
-  liverpool: { bg: "#c8102e", ink: "#ffffff", sub: "#efb8c1", bar: "#f6eb61" },
-  manUnited: { bg: "#111111", ink: "#da291c", sub: "#b8b8b8", bar: "#fbe122" },
-  manCity: { bg: "#6cabdd", ink: "#1c2c5b", sub: "#345282" },
-  tottenham: { bg: "#f4f3ef", ink: "#132257", sub: "#7c7c7a" },
-  realMadrid: { bg: "#3d195b", ink: "#febe10", sub: "#c5bace" },
-  barcelona: { bg: "#a50044", ink: "#edbb00", sub: "#e4b3c7" },
-  atletico: { bg: "#272e61", ink: "#e03a3e", sub: "#bfc1d0" },
-  psg: { bg: "#004170", ink: "#ffffff", sub: "#b3c6d4", bar: "#da291c" },
-  bayern: { bg: "#dc052d", ink: "#ffffff", sub: "#f5b4c0", bar: "#ffffff" },
-  other: { bg: "#1f2933", ink: "#ffffff", sub: "#bcbfc2" },
+  arsenal: dark("#4d1821"),
+  chelsea: light("#93a5eb"),
+  liverpool: light("#eda8d5"),
+  manUnited: dark("#394452"),
+  manCity: light("#8ca6c9"),
+  tottenham: light("#fffcf2"),
+  realMadrid: light("#dac9e6"),
+  barcelona: light("#fce7e6"),
+  atletico: dark("#353839"),
+  psg: light("#abcfcd"),
+  bayern: light("#a4b084"),
+  other: dark("#000000"),
 } as const satisfies Record<string, ThumbTheme>;
 
-/** Hue-alternating order, so the four reds never land side by side. */
+/** Light and dark finishes alternate, so two pale cards never sit together. */
 const THEME_ROTATION: readonly ThumbTheme[] = [
+  THEMES.chelsea,
+  THEMES.arsenal,
+  THEMES.bayern,
+  THEMES.manUnited,
+  THEMES.liverpool,
+  THEMES.other,
+  THEMES.psg,
+  THEMES.atletico,
   THEMES.manCity,
   THEMES.arsenal,
-  THEMES.chelsea,
-  THEMES.barcelona,
-  THEMES.tottenham,
-  THEMES.liverpool,
   THEMES.realMadrid,
   THEMES.manUnited,
-  THEMES.psg,
-  THEMES.bayern,
+  THEMES.barcelona,
   THEMES.other,
+  THEMES.tottenham,
   THEMES.atletico,
 ];
 

@@ -123,8 +123,8 @@ export const MatchArtwork = ({
 );
 
 /**
- * The flat CSS thumbnail (the "ARSENAL / PREMIER LEAGUE" style): one solid
- * colour field, a big identity line, a small tracked context line. Sizing is
+ * The flat CSS thumbnail: one solid colour field, a capitalized identity
+ * line, and a small uppercase caption. Sizing is
  * container-relative (`cqw` of the card itself, with px fallbacks in the CSS
  * for browsers without container units), so the same component fits every
  * card width the shelves use. Overlays (status badge, score pill, play) sit

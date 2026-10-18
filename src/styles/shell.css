@@ -113,8 +113,8 @@
   padding: 0 10px 0 var(--row-pad);
   border-radius: 10px;
   color: var(--label-2);
-  font-size: 14px;
-  font-weight: 500;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
   overflow: hidden;
   white-space: nowrap;
   transition:
@@ -220,8 +220,8 @@
   border-radius: 9px;
   background: var(--red);
   color: #fff;
-  font-size: 11px;
-  font-weight: 700;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   line-height: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -271,7 +271,9 @@
   border: 0;
   background: transparent;
   color: var(--label);
-  font-size: 14px;
+  font: var(--style-callout-em);
+  letter-spacing: var(--track-callout);
+  font-weight: 400;
   outline: none;
   transition:
     opacity 180ms ease 120ms,
@@ -308,10 +310,8 @@
   margin: 12px 0 2px;
   padding: 0 10px 0 calc(var(--row-pad) + 22px + 10px);
   color: var(--label-3);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   white-space: nowrap;
   overflow: hidden;
   transition: opacity 180ms ease 120ms;
@@ -401,7 +401,8 @@
   gap: 10px;
   padding: 14px 10px 0 var(--row-pad);
   color: var(--label-2);
-  font: 600 13px/1 var(--font-display);
+  font: var(--style-footnote-em);
+  letter-spacing: var(--track-footnote);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -681,9 +682,8 @@
   justify-content: center;
   gap: 3px;
   color: var(--label-3);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   transition:
     color 150ms ease,
     transform 150ms var(--ease-out);
@@ -759,10 +759,8 @@
   align-items: center;
   gap: 8px;
   color: var(--label-2);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: var(--style-display-21);
+  letter-spacing: var(--track-display-21);
 }
 
 .hero-title {
@@ -771,14 +769,14 @@
   align-items: baseline;
   column-gap: 0.32em;
   margin: 10px 0 0;
-  font: 800 clamp(30px, 4.6vw, 60px) / 1.04 var(--font-display);
-  letter-spacing: -0.028em;
+  font: var(--style-display-page);
+  letter-spacing: var(--track-display-page);
   text-wrap: balance;
 }
 
 .hero-vs {
   color: var(--label-3);
-  font-weight: 600;
+  font-weight: 400;
   font-size: 0.58em;
 }
 
@@ -788,8 +786,8 @@
   align-items: center;
   gap: 10px 14px;
   margin-top: 14px;
-  font-size: 15px;
-  font-weight: 500;
+  font: var(--style-subhead);
+  letter-spacing: var(--track-subhead);
 }
 
 .hero-meta-dim {
@@ -797,7 +795,8 @@
 }
 
 .hero-score {
-  font: 700 22px/1 var(--font-rounded);
+  font: var(--style-title2-em);
+  letter-spacing: var(--track-title2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -822,12 +821,15 @@
   }
 
   .hero-title {
-    font-size: 28px;
+    font: var(--style-display-28);
+    letter-spacing: var(--track-display-28);
   }
 
   .hero-meta {
     margin-top: 10px;
-    font-size: 14px;
+    font: var(--style-site-label);
+    letter-spacing: var(--track-site-label);
+    font-weight: 400;
   }
 
   .hero-actions {
@@ -904,7 +906,8 @@
 .banner-blurb {
   margin: 8px 0 0;
   color: var(--label-2);
-  font-size: 15px;
+  font: var(--style-subhead);
+  letter-spacing: var(--track-subhead);
   text-wrap: pretty;
 }
 
@@ -960,7 +963,8 @@
 
 .league-hero-content .hero-title {
   margin-top: 6px;
-  font-size: clamp(26px, 3.8vw, 50px);
+  font: 600 clamp(28px, 3.8vw, 48px) / 1.08349 var(--font-display);
+  letter-spacing: -0.003em;
 }
 
 /* ---------- chips (phone categories, search suggestions) ---------- */
@@ -991,8 +995,8 @@
   border-radius: 999px;
   background: var(--fill);
   color: var(--label);
-  font-size: 14px;
-  font-weight: 600;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
   white-space: nowrap;
   transition:
     background-color 150ms ease,
@@ -1059,8 +1063,8 @@
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  font-size: 14px;
-  font-weight: 600;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
   white-space: nowrap;
 }
 
