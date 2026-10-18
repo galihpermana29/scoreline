@@ -1,3 +1,47 @@
+/* SF Pro Display from public/font. The kit stylesheet maps Heavy and Black
+   both to 900, and Light and Ultralight both to 200, so a weight of 800
+   would miss Heavy. These faces name the weights the UI actually uses.
+   woff2 only; the browser fetches a file when an element asks for it. */
+@font-face {
+  font-family: "SF Pro Display";
+  src: url("/font/SFProDisplay-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SF Pro Display";
+  src: url("/font/SFProDisplay-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SF Pro Display";
+  src: url("/font/SFProDisplay-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SF Pro Display";
+  src: url("/font/SFProDisplay-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SF Pro Display";
+  src: url("/font/SFProDisplay-Heavy.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ---------- tokens ----------
 
    Two appearances keyed off html[data-theme]. Light is the default and
@@ -67,11 +111,59 @@
   --shelf-gap: 12px;
   --radius-card: 12px;
   --font:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+    "SF Pro Display", "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui,
+    sans-serif;
   --font-display:
-    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
-  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    "SF Pro Display", "SF Pro", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* iOS Large text styles (HIG). Size, leading, and the emphasized weight
+     are the built-in styles. Tracking is the published point value for
+     that size, which the system would apply itself. */
+  --style-title2-em: 700 22px/28px var(--font-display);
+  --track-title2: -0.26px;
+  --style-title3-em: 600 20px/25px var(--font-display);
+  --track-title3: -0.45px;
+  --style-headline: 600 17px/22px var(--font);
+  --track-headline: -0.43px;
+  --style-body: 400 17px/22px var(--font);
+  --track-body: -0.43px;
+  --style-body-read: 400 17px/1.47059 var(--font);
+  --track-body-read: -0.022em;
+  --style-callout-em: 600 16px/21px var(--font);
+  --track-callout: -0.31px;
+  --style-subhead: 400 15px/20px var(--font);
+  --track-subhead: -0.23px;
+  --style-subhead-em: 600 15px/20px var(--font);
+  --style-footnote: 400 13px/18px var(--font);
+  --track-footnote: -0.08px;
+  --style-footnote-em: 600 13px/18px var(--font);
+  --style-caption1: 400 12px/16px var(--font);
+  --track-caption1: 0px;
+  --style-caption2-em: 600 11px/13px var(--font);
+  --track-caption2: 0.06px;
+
+  /* apple.com/id/iphone. Display is always semibold. Tracking and leading
+     are the step they ship at that size, not one value for every headline. */
+  --style-display-page: 600 clamp(32px, 4.6vw, 56px)/1.07143 var(--font-display);
+  --track-display-page: -0.005em;
+  --style-display-section: 600 clamp(28px, 3.2vw, 40px)/1.1 var(--font-display);
+  --track-display-section: 0em;
+  --style-display-28: 600 28px/1.14286 var(--font-display);
+  --track-display-28: 0.007em;
+  --style-display-24: 600 24px/1.16667 var(--font-display);
+  --track-display-24: 0.009em;
+  --style-display-21: 600 21px/1.19048 var(--font-display);
+  --track-display-21: 0.011em;
+  --style-display-19: 600 19px/1.21053 var(--font-display);
+  --track-display-19: 0.012em;
+  --style-site-label: 600 14px/1.28577 var(--font);
+  --track-site-label: -0.016em;
+  --style-site-caption: 400 12px/1.33337 var(--font);
+  --track-site-caption: -0.01em;
+  --style-site-badge: 600 12px/1.33337 var(--font);
+  --track-site-badge: -0.01em;
 }
 
 :root[data-theme="dark"] {
@@ -196,8 +288,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--label);
-  font: 16px/1.35 var(--font);
-  letter-spacing: -0.1px;
+  font: var(--style-body);
+  letter-spacing: var(--track-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -272,14 +364,15 @@ input[type="search"]::-webkit-search-decoration {
 
 .page-title {
   margin: 0;
-  font: 800 clamp(30px, 3.2vw, 44px) / 1.08 var(--font-display);
-  letter-spacing: -0.022em;
+  font: var(--style-display-section);
+  letter-spacing: var(--track-display-section);
 }
 
 .page-sub {
   margin: 6px 0 0;
   color: var(--label-2);
-  font-size: 15px;
+  font: var(--style-body-read);
+  letter-spacing: var(--track-body-read);
   max-width: 60ch;
   text-wrap: pretty;
 }
@@ -287,8 +380,8 @@ input[type="search"]::-webkit-search-decoration {
 .footnote {
   margin: 40px var(--gutter) 0;
   color: var(--label-3);
-  font-size: 12px;
-  letter-spacing: 0;
+  font: var(--style-site-caption);
+  letter-spacing: var(--track-site-caption);
   text-align: center;
 }
 
@@ -302,8 +395,8 @@ input[type="search"]::-webkit-search-decoration {
   height: 44px;
   padding: 0 22px;
   border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
+  font: var(--style-headline);
+  letter-spacing: var(--track-headline);
   white-space: nowrap;
   transition:
     transform 150ms var(--ease-out),
@@ -344,8 +437,8 @@ input[type="search"]::-webkit-search-decoration {
   border-radius: 10px;
   background: var(--fill);
   color: var(--label);
-  font-size: 14px;
-  font-weight: 600;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
   white-space: nowrap;
   transition:
     background-color 150ms ease,
@@ -378,8 +471,8 @@ input[type="search"]::-webkit-search-decoration {
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
   box-shadow: inset 0 0 0 0.5px var(--stroke-strong);
-  font-size: 15px;
-  font-weight: 600;
+  font: var(--style-subhead-em);
+  letter-spacing: var(--track-subhead);
   transition:
     transform 150ms var(--ease-out),
     background-color 150ms ease;
@@ -411,9 +504,8 @@ input[type="search"]::-webkit-search-decoration {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  font: var(--style-site-badge);
+  letter-spacing: var(--track-site-badge);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -462,7 +554,7 @@ img.crest.is-loaded {
   border-radius: 50%;
   background: var(--fill-strong);
   color: var(--label-2);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -518,15 +610,16 @@ img.crest.is-loaded {
 
 .notice-title {
   margin: 12px 0 0;
-  font-size: 19px;
-  font-weight: 700;
+  font: var(--style-display-19);
+  letter-spacing: var(--track-display-19);
 }
 
 .notice-body {
   max-width: 360px;
   margin: 6px 0 0;
   color: var(--label-2);
-  font-size: 15px;
+  font: var(--style-subhead);
+  letter-spacing: var(--track-subhead);
   text-wrap: pretty;
 }
 
@@ -561,8 +654,8 @@ img.art.is-loaded {
 
 .art-vs {
   color: var(--label-3);
-  font-size: 14px;
-  font-weight: 700;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
   text-transform: uppercase;
 }
 

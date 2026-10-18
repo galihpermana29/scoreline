@@ -1,21 +1,24 @@
 import { useConvexAuth } from "convex/react";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 const SignInModal = lazy(() => import("./SignInModal"));
 
 /**
- * The hard gate. A signed-out visitor sees the screen they opened, dimmed
- * under a black scrim, with the sign-in modal on top; a successful sign-in
- * simply lifts the gate, so a deep link lands on the screen it opened.
- * Nothing here blurs: the frame-wide no-blur rule (base.css) stands.
+ * Sign-in over the screen the visitor opened. Browse can be postponed for
+ * this session (Later). The watch screen cannot: it stays covered until
+ * they sign in, and the only way off it is Back to home. A successful
+ * sign-in lifts the gate either way, so a deep link lands on the watch
+ * screen it opened. Nothing here blurs: the frame-wide no-blur rule
+ * (base.css) stands.
  *
  * The page behind is made inert instead of unmounted, so it stays visible
  * but can neither be clicked nor tabbed into. This is a front-end gate for
  * accounts and alerts, not protection for the feed.
  */
-export const AuthGate = () => {
+export const AuthGate = ({ hard, onLeave }: { hard: boolean; onLeave: () => void }) => {
   const { isLoading, isAuthenticated } = useConvexAuth();
-  const up = !isLoading && !isAuthenticated;
+  const [postponed, setPostponed] = useState(false);
+  const up = !isLoading && !isAuthenticated && (hard || !postponed);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,7 +41,7 @@ export const AuthGate = () => {
     <div ref={ref} className="gate">
       <div className="gate-scrim" aria-hidden />
       <Suspense fallback={null}>
-        <SignInModal />
+        <SignInModal leaveLabel={hard ? "Back to home" : "Later"} onLeave={hard ? onLeave : () => setPostponed(true)} />
       </Suspense>
     </div>
   );

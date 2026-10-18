@@ -356,7 +356,7 @@ export const App = () => {
 
         <MatchSheet match={selected} onClose={closeSheet} onWatch={watchFromSheet} />
         <AlertsHost watching={watching !== null} />
-        <AuthGate />
+        <AuthGate hard={watching !== null} onLeave={exitWatch} />
       </div>
     </MotionConfig>
   );

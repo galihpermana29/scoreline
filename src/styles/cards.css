@@ -21,13 +21,14 @@
   gap: 10px;
   margin: 0;
   padding: 0 var(--gutter);
-  font: 700 21px/1.2 var(--font-display);
-  letter-spacing: -0.015em;
+  font: var(--style-display-21);
+  letter-spacing: var(--track-display-21);
 }
 
 @media (min-width: 740px) {
   .shelf-title {
-    font-size: 24px;
+    font: var(--style-display-24);
+    letter-spacing: var(--track-display-24);
   }
 }
 
@@ -236,7 +237,7 @@
   justify-content: center;
   gap: 10px;
   padding: 12%;
-  background: var(--thumb-bg, #1f2933);
+  background: var(--thumb-bg, #1d1d1f);
   text-align: center;
 }
 
@@ -258,11 +259,11 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
   font-family: var(--font-display);
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.01em;
-  text-transform: uppercase;
-  color: var(--thumb-ink, #fff);
+  font-weight: 600;
+  line-height: 1.14286;
+  letter-spacing: 0.007em;
+  text-transform: capitalize;
+  color: var(--thumb-ink, #f5f5f7);
   /* Default wrapping: breaks at spaces only. A word wider than the card
      (scored against the tier cutoffs above) is rare; the clamp clips it
      rather than letting a mid-word break wreck the wordmark. */
@@ -278,7 +279,8 @@
 .thumb-sm {
   font-size: 22px;
   font-size: 8.2cqw;
-  line-height: 1.06;
+  line-height: 1.16667;
+  letter-spacing: 0.009em;
 }
 
 .thumb-small {
@@ -287,12 +289,13 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
   max-width: 100%;
-  font-size: 11px;
-  font-size: 4.6cqw;
-  font-weight: 600;
-  letter-spacing: 0.22em;
+  font-size: 12px;
+  font-size: max(11px, 4.6cqw);
+  font-weight: 400;
+  line-height: 1.33337;
+  letter-spacing: -0.01em;
   text-transform: uppercase;
-  color: var(--thumb-sub, rgba(255, 255, 255, 0.88));
+  color: var(--thumb-sub, #86868b);
   overflow-wrap: anywhere;
 }
 
@@ -323,7 +326,8 @@
   background: rgba(0, 0, 0, 0.5);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  font: 700 14px/1 var(--font-rounded);
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -373,22 +377,23 @@
 
 .card-title {
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 600;
+  font: var(--style-subhead-em);
+  letter-spacing: var(--track-subhead);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .card-title-vs {
   color: var(--label-3);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .card-meta {
   margin-top: 2px;
   overflow: hidden;
   color: var(--label-2);
-  font-size: 13px;
+  font: var(--style-footnote);
+  letter-spacing: var(--track-footnote);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -558,9 +563,8 @@
   top: clamp(16px, 2.4vw, 26px);
   left: clamp(16px, 2.4vw, 26px);
   color: var(--label-2);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font: var(--style-site-badge);
+  letter-spacing: var(--track-site-badge);
   text-transform: uppercase;
 }
 
@@ -575,9 +579,8 @@
   background: rgba(255, 255, 255, 0.16);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
+  font: var(--style-site-badge);
+  letter-spacing: var(--track-site-badge);
   text-transform: uppercase;
 }
 
@@ -601,15 +604,15 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font: 800 clamp(18px, 2vw, 28px) / 1.05 var(--font-display);
-  letter-spacing: -0.02em;
-  text-transform: uppercase;
+  font: 600 clamp(18px, 2vw, 28px) / 1.14286 var(--font-display);
+  letter-spacing: 0.007em;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .wide-team-score {
-  font: 800 clamp(20px, 2.2vw, 30px) / 1 var(--font-rounded);
+  font: 600 clamp(20px, 2.2vw, 28px) / 1.14286 var(--font-display);
+  letter-spacing: 0.007em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -620,8 +623,8 @@
   min-width: 0;
   margin-top: 4px;
   color: var(--label-2);
-  font-size: 13px;
-  font-weight: 500;
+  font: var(--style-footnote);
+  letter-spacing: var(--track-footnote);
 }
 
 .wide-league-name {
@@ -656,10 +659,14 @@
 
   .wide-team-name {
     font-size: 17px;
+    line-height: 22px;
+    letter-spacing: -0.43px;
   }
 
   .wide-team-score {
     font-size: 19px;
+    line-height: 1.21053;
+    letter-spacing: 0.012em;
   }
 }
 
@@ -724,8 +731,8 @@
   padding: 0 7px;
   border-radius: 6px;
   background: var(--red);
-  font-size: 11px;
-  font-weight: 700;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -750,12 +757,14 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     white-space: normal;
-    font-size: 14px;
-    line-height: 1.25;
+    font: var(--style-site-label);
+    letter-spacing: var(--track-site-label);
+    line-height: 1.28577;
   }
 
   .tile-caption .card-meta {
-    font-size: 12px;
+    font: var(--style-site-caption);
+    letter-spacing: var(--track-site-caption);
   }
 }
 
@@ -794,14 +803,14 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font: 700 15px/1 var(--font-display);
-  letter-spacing: -0.01em;
+  font: var(--style-subhead-em);
+  letter-spacing: var(--track-subhead);
 }
 
 .promo-title {
   margin: 4px 0 0;
-  font: 800 clamp(22px, 2.4vw, 32px) / 1.1 var(--font-display);
-  letter-spacing: -0.022em;
+  font: 600 clamp(22px, 2.4vw, 32px) / 1.125 var(--font-display);
+  letter-spacing: 0.004em;
   text-wrap: balance;
 }
 
@@ -809,7 +818,9 @@
   margin: 0;
   max-width: 44ch;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 14px;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
+  font-weight: 400;
   text-wrap: pretty;
 }
 
@@ -826,9 +837,8 @@
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.18);
   color: rgba(255, 255, 255, 0.85);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   line-height: 18px;
   text-transform: uppercase;
 }
@@ -868,7 +878,8 @@
   }
 
   .promo-sub {
-    font-size: 13px;
+    font: var(--style-footnote);
+    letter-spacing: var(--track-footnote);
   }
 }
 
@@ -937,8 +948,8 @@
 
 .standings-name {
   margin: 0;
-  font: 700 17px/1.2 var(--font-display);
-  letter-spacing: -0.01em;
+  font: var(--style-headline);
+  letter-spacing: var(--track-headline);
 }
 
 .standings-open {
@@ -947,8 +958,8 @@
   top: 50%;
   transform: translateY(-50%);
   color: var(--label-2);
-  font-size: 13px;
-  font-weight: 600;
+  font: var(--style-footnote-em);
+  letter-spacing: var(--track-footnote);
   transition: color 150ms ease;
 }
 
@@ -961,16 +972,17 @@
 .standings-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font: var(--style-site-label);
+  letter-spacing: var(--track-site-label);
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 
 .standings-table th {
   padding: 8px 6px;
   color: var(--label-3);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font: var(--style-caption2-em);
+  letter-spacing: var(--track-caption2);
   text-align: center;
   text-transform: uppercase;
   border-bottom: 0.5px solid var(--hairline);
@@ -1060,7 +1072,7 @@
 
 .standings-table .col-pts {
   color: var(--label);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 @media (max-width: 479px) {
@@ -1117,7 +1129,8 @@
   border-top: 0.5px solid var(--hairline);
   list-style: none;
   color: var(--label-2);
-  font-size: 12px;
+  font: var(--style-site-caption);
+  letter-spacing: var(--track-site-caption);
 }
 
 .standings-legend li {

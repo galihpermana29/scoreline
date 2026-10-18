@@ -31,6 +31,7 @@ export type IconName =
   | "arrow-up-right"
   | "zoom"
   | "shield"
+  | "shield-fill"
   | "clear"
   | "sidebar"
   | "sun"
@@ -156,6 +157,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   shield: <path {...STROKE} d="M10 2.8 16.4 5v4.4c0 3.9-2.7 6.6-6.4 8-3.7-1.4-6.4-4.1-6.4-8V5z" />,
+  "shield-fill": <path fill="currentColor" d="M10 2.8 16.4 5v4.4c0 3.9-2.7 6.6-6.4 8-3.7-1.4-6.4-4.1-6.4-8V5z" />,
   clear: (
     <>
       <circle cx="10" cy="10" r="8" fill="currentColor" />
