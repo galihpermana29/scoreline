@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { Match } from "../domain/match";
 import { matchLabel } from "../domain/match";
 import { formatLongDate, formatTime } from "../lib/format";
@@ -12,7 +12,10 @@ import { useEntryOrigin } from "../lib/useEntryOrigin";
 import { pickPlayerUrl } from "../api/player";
 import { pickNoAdMirrorUrl } from "../api/no-ad-mirror";
 import { fetchMatchStreams, postStreamSwitch, type StreamOption } from "../api/streams";
-import { bestMeasured, compareQuality, qualityBadge, streamQuality } from "../domain/streamQuality";
+import { bestMeasured, compareQuality, streamQuality } from "../domain/streamQuality";
+import { ServerMenu } from "../components/ServerMenu";
+import { usePlayerSnap } from "../lib/usePlayerSnap";
+import { WatchLayerScrollContext } from "./WatchLayer";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
 import { useNoAdMirrors } from "../lib/useNoAdMirrors";
 import { downloadCalendarEvent } from "../lib/calendar";
@@ -192,10 +195,10 @@ const HIDE_ADS_KEY = "scoreline:hide-ads";
  */
 const WATCH_INTRO_KEY = "scoreline:watch-intro";
 const WATCH_INTRO_COPY = {
-  title: "Selamat menonton di Scoreline!",
+  title: "Enjoy the match on Scoreline",
   body:
-    "Perhatian: halaman sumber menampilkan iklan. Ads Guard di toolbar memuat cermin tanpa spanduk. Jika cermin itu tidak menjawab, pita iklan ditutup garis hitam.",
-  cta: "Mulai menonton",
+    "Note: the source page shows ads. Ads Guard in the toolbar loads a mirror with no banners. If that mirror does not answer, black bars cover the ad bands.",
+  cta: "Start watching",
 } as const;
 
 const kickHint = (match: Match): string =>
@@ -484,9 +487,8 @@ export const StreamScreen = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, embedMode, embedEpoch, route?.matchId, match.sportId]);
-  // Which chips carry a measured quality badge, and which is the best of
-  // them (`src/domain/streamQuality.ts` - measured facts, never a guess).
-  const streamQualities = streamOptions.map((stream) => streamQuality(stream.name));
+  // The best measured server (`src/domain/streamQuality.ts` - measured
+  // facts, never a guess). The toolbar menu badges the same table.
   const bestKnown = bestMeasured(streamOptions);
   const chooseStream = (stream: StreamOption, picked: "visitor" | "auto" = "visitor") => {
     const frame = embedFrameRef.current;
@@ -515,6 +517,11 @@ export const StreamScreen = ({
   // own control bar is the exit on touch screens.
   const [isFaux, setIsFaux] = useState(false);
   const shellMaximized = isFullscreen || isFaux;
+  // Snap-back lives on the layer WatchLayer owns. Disabled while this shell
+  // is maximized (native fullscreen or the faux overlay); the width gate
+  // lives in the hook, on the same 740px split as the phone layout.
+  const layerScrollRef = useContext(WatchLayerScrollContext);
+  usePlayerSnap(layerScrollRef, shellRef, !shellMaximized);
 
   // While maximized the shell must take every pixel - including the ones the
   // root-level sidebar (fixed, z 45) normally owns. The shell lives inside
@@ -1114,61 +1121,6 @@ export const StreamScreen = ({
         </motion.div>
       </div>
 
-      {/*
-          The stream-server chip row (page embed only): the source's own
-          server buttons live inside the frame - cropped out of view with
-          the zoom on - so this row is the visible, clickable selector. The
-          list and the switch contract are documented in src/api/streams.ts;
-          an empty or failed fetch simply hides the row. */}
-      {playing && embedMode === "page" && streamOptions.length > 0 ? (
-        <motion.div
-          className="watch-servers"
-          role="group"
-          aria-label="Stream servers"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <span className="watch-servers-label">
-            <Icon name="player" size={14} />
-            Servers
-          </span>
-          <div className="watch-servers-list">
-            {streamOptions.map((stream, index) => {
-              const quality = streamQualities[index];
-              const isBestKnown = bestKnown?.stream === stream;
-              const baseTitle =
-                activeStreamId === stream.streamId
-                  ? `Stream server ${stream.name}`
-                  : `Switch the live stream to server ${stream.name}`;
-              // The badge is a measured fact (src/domain/streamQuality.ts);
-              // unknown servers carry none and never claim one.
-              const title = quality
-                ? `${baseTitle} - measured ${qualityBadge(quality)}${isBestKnown ? ", best measured server" : ""}`
-                : baseTitle;
-              return (
-                <button
-                  key={stream.streamId}
-                  className={`watch-server${activeStreamId === stream.streamId ? " watch-server-on" : ""}`}
-                  onClick={() => chooseStream(stream)}
-                  aria-pressed={activeStreamId === stream.streamId}
-                  title={title}
-                >
-                  {stream.name}
-                  {quality ? (
-                    <span
-                      className={`watch-server-quality${isBestKnown ? " watch-server-quality-best" : ""}`}
-                    >
-                      {qualityBadge(quality)}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </motion.div>
-      ) : null}
-
       <motion.div
         className="watch-body"
         initial={layoutId ? { opacity: 0, y: 12 } : false}
@@ -1213,7 +1165,12 @@ export const StreamScreen = ({
                 transition={{ type: "spring", bounce: 0.16, duration: 0.55, delay: layoutId ? 0.22 : 0.05 }}
               >
             {playing ? (
-              embedControls
+              <>
+                {embedMode === "page" && streamOptions.length > 0 ? (
+                  <ServerMenu options={streamOptions} activeStreamId={activeStreamId} onChoose={chooseStream} />
+                ) : null}
+                {embedControls}
+              </>
             ) : (
               <>
                 <button className="button-primary" onClick={startEmbed}>
