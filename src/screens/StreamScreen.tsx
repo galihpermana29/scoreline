@@ -24,6 +24,7 @@ import { useNoAdMirrors } from "../lib/useNoAdMirrors";
 import { downloadCalendarEvent } from "../lib/calendar";
 import { useTvMode } from "../lib/tvmode";
 import { focusTvHome, isBackKey, tvFocusIsHome } from "../lib/tvnav";
+import { useIdleChrome } from "../lib/useIdleChrome";
 import { useTvFocusGuard } from "../lib/useTvFocusGuard";
 
 /**
@@ -203,6 +204,8 @@ const PAGE_EMBED_MASK = { top: 16, bottom: 40 } as const;
  * on the click instead of re-running the dance.
  */
 const PAGE_EMBED_KICK_DELAY_MS = 900;
+/** When the TV Mode auto pick is re-sent until playback is seen (ms after the first send). */
+const AUTO_START_RETRY_MS = [4000, 10000, 18000, 30000];
 const PAGE_ZOOM_KEY = "scoreline:page-zoom";
 const HIDE_ADS_KEY = "scoreline:hide-ads";
 
@@ -258,7 +261,10 @@ export const StreamScreen = ({
   // itself, the highlight never leaves our chrome, and the toolbar trims
   // to labelled controls a remote viewer needs.
   const tv = useTvMode() === "on";
-  useTvFocusGuard(tv);
+  const playbackSeenRef = useRef(false);
+  useTvFocusGuard(tv, () => {
+    playbackSeenRef.current = true;
+  });
   // The welcome note's seen flag lives above `playing` because the very
   // first watch usually arrives through autoplay (the Watch card click):
   // an unseen visitor gets the note instead of the stream, and
@@ -785,8 +791,11 @@ export const StreamScreen = ({
   // the posted switch is what starts their player - so the best measured
   // server is picked, else the first listed one.
   const autoStartedRef = useRef(false);
+  const autoPickRef = useRef<StreamOption | null>(null);
   useEffect(() => {
     autoStartedRef.current = false;
+    autoPickRef.current = null;
+    playbackSeenRef.current = false;
   }, [embedEpoch, embedMode, playing]);
   const embedSettled = zoomCropWanted ? zoomKickDone : embedLoads > 0;
   useEffect(() => {
@@ -818,12 +827,33 @@ export const StreamScreen = ({
     // Highlight the chosen chip so the visitor sees what happened and can
     // pick another any time; their own server row inside the frame
     // re-syncs from the player's reply.
-    autoStartedRef.current = chooseStream(best?.stream ?? firstOption, "auto");
+    const pick = best?.stream ?? firstOption;
+    autoStartedRef.current = chooseStream(pick, "auto");
+    if (autoStartedRef.current) autoPickRef.current = pick;
     // `embedLoads` re-runs this on every fresh document in the frame chain:
     // a switch posted to the entry page (no child frames yet) is not
     // delivered, and the attempt must re-arm when the mirror lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, embedMode, embedSettled, embedLoads, route?.matchId, streamOptions, activeStreamId, bestKnown, timChannel, tv]);
+
+  // "Delivered" only means their player's frame existed. On the TV (slow
+  // WebView, 2026-10-23) the auto pick was posted before their player
+  // listened and was dropped: the video sat paused while the same pick made
+  // by hand started it at once. With a remote nobody can press their play
+  // button, so the pick is re-sent until their player takes focus - the one
+  // sign of playback a cross-origin frame gives - or the viewer picks.
+  useEffect(() => {
+    const pick = autoPickRef.current;
+    if (!tv || pick === null || activeStreamId !== pick.streamId) return;
+    const timers = AUTO_START_RETRY_MS.map((delay) =>
+      window.setTimeout(() => {
+        const frame = embedFrameRef.current;
+        if (playbackSeenRef.current || visitorPickedRef.current || frame === null) return;
+        postStreamSwitch(frame, pick);
+      }, delay),
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [tv, activeStreamId, embedEpoch]);
   const toggleZoom = () => {
     setZoom((current) => {
       try {
@@ -1067,6 +1097,14 @@ export const StreamScreen = ({
   // Icon-only controls (compact pill, one TV row; `title` carries the
   // tooltip on hover and `aria-label` keeps the names audible - the stopped
   // state's CTAs keep their words, these are settled muscle-memory pills).
+  // While a stream plays, the toolbar (and the in-frame bar in fullscreen)
+  // fades out after a quiet spell and returns on the next interaction; an
+  // open menu or dialog, or a pointer resting on the controls, keeps it up.
+  const chromeIdle = useIdleChrome(
+    playing,
+    () => document.querySelector('.server-menu-list, [aria-modal="true"], .watch-toolbar:hover, .player-embed-bar:hover') !== null,
+  );
+
   const embedControls = (
     <>
       <div className="player-embed-mode" role="group" aria-label="Embed mode">
@@ -1122,7 +1160,6 @@ export const StreamScreen = ({
           }
         >
           <Icon name={hideAds ? "shield-fill" : "shield"} size={16} />
-          <span className="tv-label">Ads guard</span>
         </button>
       ) : null}
       <button
@@ -1132,7 +1169,6 @@ export const StreamScreen = ({
         title="Reload the whole page (feed, host lookups and the embed all start clean) - the TV-friendly way to refresh"
       >
         <Icon name="refresh" size={14} />
-        <span className="tv-label">Refresh</span>
       </button>
       {/* Parked in the floating toolbar (watch.css .toolbar-fullscreen,
           2026-10-18): the embedded player now exposes its own fullscreen.
@@ -1152,7 +1188,6 @@ export const StreamScreen = ({
         }
       >
         <Icon name={shellMaximized ? "fullscreen-exit" : "fullscreen"} size={16} />
-        <span className="tv-label">{shellMaximized ? "Exit full screen" : "Full screen"}</span>
       </button>
       <button
         className="toolbar-button"
@@ -1161,7 +1196,6 @@ export const StreamScreen = ({
         title="Stop the live embed and return to the simulated player"
       >
         <Icon name="stop" size={14} />
-        <span className="tv-label">Stop</span>
       </button>
     </>
   );
@@ -1300,7 +1334,7 @@ export const StreamScreen = ({
                   controls ride inside the frame for the duration. The faux
                   overlay covers the toolbar's lane too, so it shares this. */}
               {shellMaximized ? (
-                <div className="player-embed-bar" data-tv-scope data-tv-row="fullscreen">
+                <div className={`player-embed-bar${chromeIdle ? " is-idle" : ""}`} data-tv-scope data-tv-row="fullscreen">
                   {embedControls}
                 </div>
               ) : null}
@@ -1472,7 +1506,7 @@ export const StreamScreen = ({
               The spring ride-in runs once on mount; the transform
               animations belong to motion. */
             }
-            <div className="watch-toolbar-lane">
+            <div className={`watch-toolbar-lane${chromeIdle ? " is-idle" : ""}`}>
               <motion.div
                 className="watch-toolbar"
                 role="toolbar"

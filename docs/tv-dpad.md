@@ -11,11 +11,23 @@ Built and verified on the rig (`.scratch/dpad/verify.mjs`, 41 checks on trusted 
 Where the build differs from the brief below:
 
 - The focus guard is `src/lib/useTvFocusGuard.ts`; besides the blur check it re-checks every 400ms, because a focused control that unmounts (Stop, a dismissed notice) drops focus to `body` with no blur.
-- The toolbar still floats (section 5 asked for reserved height): it got a solid background, the frame is capped in TV Mode so header, frame and toolbar fit a 720p screen without overlap, and the shelf gets bottom padding plus `scroll-padding` so a focused card never sits under the toolbar.
+- The toolbar still floats (section 5 asked for reserved height), and the shelf keeps `scroll-padding` so a focused card never sits under the toolbar.
   Focus reaching the controls or Back scrolls the watch layer back to the top, so the picture returns when the viewer comes back up from Also Live.
+- The 56px labelled controls of section 5 shipped and were then reverted at the user's request (same day): they forced a frame cap that made the picture smaller than in normal mode.
+  The TV toolbar is now the normal-mode toolbar (53px at 1280x720, frame at full width), and only the filled focus pill is TV-specific.
+- The toolbar and the fullscreen bar fade out after 40s without any interaction, in both modes (`src/lib/useIdleChrome.ts`), so the picture is left clear.
+  Any pointer move, press, wheel, touch or key brings them back; the press that wakes them only shows them (an arrow or OK is swallowed, a click is swallowed), so a hidden control is never moved to or pressed blind.
+  An open server menu, an open dialog or a pointer resting on the toolbar holds them up; Back is not swallowed and still steps back.
+  The pointer over the video itself is never seen (the frame is cross-origin), so the mouse wakes them from the chrome around it, including the toolbar's own spot.
 - Mechanism: `data-tv-scope` (no value) on the watch root and on the fullscreen bar, `data-tv-row` on top, stage notices, controls, related and fullscreen, `data-tv-default` on Servers, Play Live and (while maximized) the fullscreen button, `data-tv-skip` on card More buttons and shelf arrows.
 - Back is `Escape`, `GoBack` or `BrowserBack` (`isBackKey` in `tvnav.ts`); what the user's TV app actually sends is not recorded yet.
 - Two additions: leaving a match puts focus back on the card that opened it, and the watch layer is `inert` during its exit animation so its guard cannot pull focus back into a layer that is going away.
+
+On the TV (same evening, `adb shell input keyevent` against production):
+the app is `sbs.scoreline.tv`, a full-screen WebView on the live site with `ScorelineTV/` in its user agent (TV Mode now defaults on there).
+Arrival focus, the guard, row navigation and the menu all held.
+Back never reached the page: the app took `KEYCODE_BACK` and went back in history, so an open menu left the match; the app now offers Back to the page as an `Escape` keydown first and only goes back when the page does not `preventDefault`.
+The auto-start was dropped once on the slow WebView (posted before their player listened; the same pick by hand started it), so in TV Mode the pick is re-sent until their player takes focus, the only playback signal the frame gives.
 
 ## Who this is for
 
@@ -93,6 +105,8 @@ In TV Mode (keep the pointer behaviour the same everywhere):
 - While the list is open nothing outside it is reachable.
 
 ### 5. Big, labelled, legible controls
+
+Superseded in part: the size and label rules were reverted (see Status); the filled focus state stands.
 
 In TV Mode only, the toolbar becomes a remote surface:
 

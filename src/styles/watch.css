@@ -441,6 +441,21 @@
   box-shadow: 0 18px 48px var(--shadow);
 }
 
+/* Idle while a stream plays (useIdleChrome): the controls fade out so the
+   picture is clear, and stay hit-testable in place - the pointer reaching
+   their spot over the cross-origin frame is the one move we can see
+   there, and a press that does the waking is swallowed. The fade is on the lane
+   and the bar, never on the pill, whose opacity motion owns. */
+.watch-toolbar-lane,
+.player-embed-bar {
+  transition: opacity 400ms var(--ease-out, ease);
+}
+
+.watch-toolbar-lane.is-idle,
+.player-embed-bar.is-idle {
+  opacity: 0;
+}
+
 /* Icon-only controls (titles carry the words): every embed control
    collapses to a compact square so the whole set - mode group, zoom,
    ad mask, refresh, stop - fits one row on a TV without wrapping.
@@ -1558,20 +1573,13 @@ a.stream-route::after {
 }
 
 /* ---------- TV Mode: the remote surface (docs/tv-dpad.md) ---------- */
-/* Read from a sofa: every control carries its word, at least 56px tall at a
-   1280x720 viewport, on a solid bar (never over their ad banner), and the
-   highlighted one fills with the accent so it reads at a glance - an
-   outline alone vanished over bright frames in the 2026-10-23 repro. The
-   remote never needs the embed-mode pair or Zoom (the crop is forced on),
-   and our Full screen comes back because theirs is inside the frame. */
-.tv-label {
-  display: none;
-}
-
-html[data-tv="on"] .tv-label {
-  display: inline;
-}
-
+/* Same toolbar and frame size as without a remote (2026-10-24: the 56px
+   labelled controls and the frame cap they forced made the picture
+   smaller than in normal mode). What TV Mode keeps: the highlighted
+   control fills with the accent so it reads at a glance - an outline
+   alone vanished over bright frames in the 2026-10-23 repro - the remote
+   never needs the embed-mode pair or Zoom (the crop is forced on), and
+   our Full screen comes back because theirs is inside the frame. */
 html[data-tv="on"] .player-embed-mode,
 html[data-tv="on"] .toolbar-zoom {
   display: none;
@@ -1581,85 +1589,10 @@ html[data-tv="on"] .watch-toolbar .toolbar-fullscreen {
   display: inline-flex;
 }
 
-html[data-tv="on"] .watch {
-  padding-bottom: 150px;
-}
-
-/* The floating toolbar must never sit over the picture: the frame is
-   capped so header (70px) + frame + toolbar (~110px with its offset) fit
-   the screen, trading the edge-to-edge width for an unobstructed view. */
-html[data-tv="on"] .player-shell {
-  width: min(100%, calc((100dvh - 180px) * 16 / 9));
-}
-
-/* The frame ends 110px above the bottom and the toolbar fills the last
-   96px, so at rest the details below would peek out half-covered beside
-   it (seen on the TV, 2026-10-23); they start below the fold instead. */
-html[data-tv="on"] .watch-body {
-  padding-top: 120px;
-}
-
 /* The remote scrolls focus into view; the padding keeps the focused card
    clear of the floating toolbar instead of tucked under it. */
 html[data-tv="on"] .watch-layer {
-  scroll-padding-block: 24px 130px;
-}
-
-html[data-tv="on"] .watch-toolbar,
-html[data-tv="on"] .watch-toolbar:hover,
-html[data-tv="on"] .watch-toolbar:focus-within {
-  gap: 10px;
-  padding: 10px;
-  border-radius: 22px;
-  background: var(--bg);
-}
-
-html[data-tv="on"] .watch-toolbar .toolbar-button,
-html[data-tv="on"] .watch-toolbar .button-primary,
-html[data-tv="on"] .watch-toolbar .button-tinted,
-html[data-tv="on"] .server-menu-trigger,
-html[data-tv="on"] .player-embed-bar .toolbar-button {
-  width: auto;
-  height: 56px;
-  padding: 0 20px;
-  gap: 10px;
-  border-radius: 14px;
-  font: var(--style-headline);
-  letter-spacing: var(--track-headline);
-}
-
-html[data-tv="on"] .watch-toolbar .toolbar-button svg,
-html[data-tv="on"] .player-embed-bar .toolbar-button svg {
-  width: 22px;
-  height: 22px;
-}
-
-html[data-tv="on"] .server-menu {
-  max-width: min(320px, 46vw);
-}
-
-html[data-tv="on"] .server-menu-list {
-  max-width: min(360px, 70vw);
-  max-height: min(420px, 60vh);
-  gap: 6px;
-  padding: 8px;
-}
-
-html[data-tv="on"] .server-menu-list .watch-server {
-  height: 52px;
-  padding: 0 18px;
-  border-radius: 12px;
-  font: var(--style-headline);
-  letter-spacing: var(--track-headline);
-}
-
-html[data-tv="on"] .player-embed-bar {
-  gap: 10px;
-}
-
-html[data-tv="on"] .player-embed-bar .toolbar-button {
-  background: rgba(0, 0, 0, 0.82);
-  color: #fff;
+  scroll-padding-block: 24px 100px;
 }
 
 html[data-tv="on"] .watch-toolbar :is(button, a):focus,
