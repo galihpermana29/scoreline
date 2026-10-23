@@ -5,6 +5,7 @@ import { thumbPlan } from "../domain/cardart";
 import { matchLabel, type League, type Match } from "../domain/match";
 import { canWatch } from "../lib/route";
 import { formatShortDate, formatTime, relativeDayLabel } from "../lib/format";
+import { useTvMode } from "../lib/tvmode";
 import { Icon } from "./icons";
 import { ScorelineBadge } from "./Logo";
 import { Crest } from "./ui";
@@ -480,13 +481,26 @@ export const Hero = ({
   const [paused, setPaused] = useState(false);
   const reduced = useReducedMotion();
   const current = matches[index % Math.max(matches.length, 1)];
+  const tv = useTvMode() === "on";
+  // Each slide remounts its buttons, so a remote highlight on one would drop
+  // to `body` when the slide changes. A focused hero holds still, and if the
+  // slide changes anyway (the feed reset below) the highlight is carried to
+  // the same action on the next slide. With a remote the hero's Watch Live
+  // is also where the highlight starts on first load.
+  const [focused, setFocused] = useState(false);
+  const carryFocus = useRef<"watch" | "details" | null>(tv ? "watch" : null);
+  const takeFocus = (action: "watch" | "details") => (element: HTMLButtonElement | null) => {
+    if (element === null || carryFocus.current !== action) return;
+    if (document.activeElement !== document.body || element.closest("[inert]") !== null) return;
+    element.focus({ preventScroll: true });
+  };
 
   useEffect(() => setIndex(0), [matches]);
   useEffect(() => {
-    if (paused || reduced || matches.length < 2) return;
+    if (paused || focused || reduced || matches.length < 2) return;
     const timer = window.setTimeout(() => setIndex((value) => (value + 1) % matches.length), HERO_INTERVAL_MS);
     return () => window.clearTimeout(timer);
-  }, [index, paused, reduced, matches.length]);
+  }, [index, paused, focused, reduced, matches.length]);
 
   if (!current) return null;
   const layoutId = `art-hero-${current.id}`;
@@ -497,6 +511,17 @@ export const Hero = ({
       aria-label="Featured matches"
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
+      onFocus={(event) => {
+        setFocused(true);
+        carryFocus.current = event.target.classList.contains("button-tinted") ? "details" : "watch";
+      }}
+      onBlur={(event) => {
+        // A null relatedTarget is the slide unmounting the button, not the
+        // viewer leaving: keep the carry so the next slide takes focus.
+        if (event.relatedTarget === null || event.currentTarget.contains(event.relatedTarget)) return;
+        setFocused(false);
+        carryFocus.current = null;
+      }}
     >
       <AnimatePresence initial={false}>
         <motion.div
@@ -551,12 +576,12 @@ export const Hero = ({
           </div>
           <div className="hero-actions">
             {canWatch(current) ? (
-              <button className="button-primary" onClick={() => onOpen(current, layoutId)}>
+              <button className="button-primary" onClick={() => onOpen(current, layoutId)} ref={takeFocus("watch")}>
                 <Icon name="play" size={14} />
                 {current.status.kind === "live" ? "Watch Live" : "Open Stream"}
               </button>
             ) : null}
-            <button className="button-tinted" onClick={() => onMore(current)}>
+            <button className="button-tinted" onClick={() => onMore(current)} ref={takeFocus("details")}>
               Details
             </button>
           </div>
