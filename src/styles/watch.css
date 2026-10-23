@@ -1592,6 +1592,13 @@ html[data-tv="on"] .player-shell {
   width: min(100%, calc((100dvh - 180px) * 16 / 9));
 }
 
+/* The frame ends 110px above the bottom and the toolbar fills the last
+   96px, so at rest the details below would peek out half-covered beside
+   it (seen on the TV, 2026-10-23); they start below the fold instead. */
+html[data-tv="on"] .watch-body {
+  padding-top: 120px;
+}
+
 /* The remote scrolls focus into view; the padding keeps the focused card
    clear of the floating toolbar instead of tucked under it. */
 html[data-tv="on"] .watch-layer {

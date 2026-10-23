@@ -20,6 +20,8 @@ export type TvMode = "on" | "off";
 
 const STORAGE_KEY = "scoreline:tv-mode";
 const DEFAULT_MODE: TvMode = "off";
+/** Our sideloaded Android TV app tags its WebView's user agent; there the remote is the only input. */
+const TV_APP_AGENT = "ScorelineTV/";
 
 const isTvMode = (value: unknown): value is TvMode => value === "on" || value === "off";
 
@@ -30,7 +32,7 @@ const readStored = (): TvMode => {
   } catch {
     // Storage can be unavailable (private mode quotas); fall through.
   }
-  return DEFAULT_MODE;
+  return navigator.userAgent.includes(TV_APP_AGENT) ? "on" : DEFAULT_MODE;
 };
 
 const apply = (mode: TvMode) => {

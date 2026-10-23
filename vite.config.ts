@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Connect, type Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { configEndpoint, probePlayerEndpoint, resolveRedirectEndpoint } from "./server/endpoints";
 
@@ -36,54 +36,41 @@ const respond = async (res: ServerResponse, response: Response): Promise<void> =
   res.end(await response.text());
 };
 
-const sourceConfigPlugin = (env: Record<string, string>): Plugin => ({
-  name: "source-config",
-  configureServer(server) {
-    server.middlewares.use((req, res, next) => {
-      if (!matchesEndpoint(req, CONFIG_ENDPOINT)) {
-        next();
-        return;
-      }
-      void respond(res, configEndpoint(env));
-    });
-  },
-});
+type Middlewares = { middlewares: Connect.Server };
 
-const resolveRedirectPlugin = (): Plugin => ({
-  name: "resolve-redirect",
-  configureServer(server) {
+/**
+ * One same-origin endpoint, mounted on both the dev server and `vite
+ * preview`, so a production build served locally (the TV checks load it
+ * over the LAN; dev mode's hundreds of modules are too slow there) talks
+ * to the same API it does on Vercel.
+ */
+const endpointPlugin = (name: string, endpoint: string, handle: (req: IncomingMessage) => Response | Promise<Response>): Plugin => {
+  const mount = (server: Middlewares) => {
     server.middlewares.use((req, res, next) => {
-      if (!matchesEndpoint(req, RESOLVE_ENDPOINT)) {
+      if (!matchesEndpoint(req, endpoint)) {
         next();
         return;
       }
-      void resolveRedirectEndpoint(requestFrom(req)).then(
+      void Promise.resolve(handle(req)).then(
         (response) => respond(res, response),
         () => undefined, // the endpoint already encoded the failure in its Response
       );
     });
-  },
-});
-
-const probePlayerPlugin = (): Plugin => ({
-  name: "probe-player",
-  configureServer(server) {
-    server.middlewares.use((req, res, next) => {
-      if (!matchesEndpoint(req, PROBE_ENDPOINT)) {
-        next();
-        return;
-      }
-      void probePlayerEndpoint(requestFrom(req)).then(
-        (response) => respond(res, response),
-        () => undefined, // the endpoint already encoded the failure in its Response
-      );
-    });
-  },
-});
+  };
+  return { name, configureServer: mount, configurePreviewServer: mount };
+};
 
 export default defineConfig(({ mode }) => {
   // Third name "" reads every variable, not just VITE_*-prefixed ones: the
   // endpoint lists must stay server-side, never inlined into the bundle.
   const env = loadEnv(mode, process.cwd(), "");
-  return { plugins: [react(), sourceConfigPlugin(env), resolveRedirectPlugin(), probePlayerPlugin()], server: { port: 5188, strictPort: true } };
+  return {
+    plugins: [
+      react(),
+      endpointPlugin("source-config", CONFIG_ENDPOINT, () => configEndpoint(env)),
+      endpointPlugin("resolve-redirect", RESOLVE_ENDPOINT, (req) => resolveRedirectEndpoint(requestFrom(req))),
+      endpointPlugin("probe-player", PROBE_ENDPOINT, (req) => probePlayerEndpoint(requestFrom(req))),
+    ],
+    server: { port: 5188, strictPort: true },
+  };
 });
