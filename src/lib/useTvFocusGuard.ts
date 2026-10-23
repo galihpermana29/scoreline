@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { focusTvHome, tvFocusIsHome } from "./tvnav";
 
 /** How often the guard re-checks that the highlight still exists. */
@@ -23,7 +23,11 @@ const CHECK_MS = 400;
  * It only acts while this document has focus, so another app in front is
  * never fought.
  */
-export const useTvFocusGuard = (enabled: boolean) => {
+export const useTvFocusGuard = (enabled: boolean, onFrameFocus?: () => void) => {
+  // Their player taking focus is the only sign of playback a cross-origin
+  // frame gives us; the watch screen uses it to stop retrying its auto-start.
+  const onFrameFocusRef = useRef(onFrameFocus);
+  onFrameFocusRef.current = onFrameFocus;
   useEffect(() => {
     if (!enabled) return;
     let last: HTMLElement | null = null;
@@ -34,6 +38,7 @@ export const useTvFocusGuard = (enabled: boolean) => {
       if (target instanceof HTMLElement && target.tagName !== "IFRAME") last = target;
     };
     const check = () => {
+      if (document.activeElement?.tagName === "IFRAME") onFrameFocusRef.current?.();
       if (!document.hasFocus() || tvFocusIsHome()) return;
       focusTvHome(last);
     };

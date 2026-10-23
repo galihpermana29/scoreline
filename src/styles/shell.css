@@ -598,6 +598,8 @@
 
 .search-field-floating {
   width: min(100%, 520px);
+  /* Shrinks to share the phone row with the round pills instead of pushing them off screen. */
+  min-width: 0;
   height: 42px;
   border-radius: 999px;
   padding: 0 12px 0 16px;
@@ -614,6 +616,10 @@
 .search-field-floating:focus-within {
   background: var(--material-active);
   color: var(--label);
+}
+
+.search-field-floating input {
+  text-overflow: ellipsis;
 }
 
 .search-field-floating input::placeholder {
