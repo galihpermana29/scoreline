@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { TimChannel } from "../api/timstreams";
 import type { StreamOption } from "../api/streams";
 import { bestMeasured, qualityBadge, streamQuality } from "../domain/streamQuality";
+import { useTvMode } from "../lib/tvmode";
+import { isBackKey } from "../lib/tvnav";
 import { Icon } from "./icons";
 
 /**
@@ -12,6 +14,13 @@ import { Icon } from "./icons";
  * embed; it never gets a quality badge (nothing is measured for it) and
  * the `TS` tag tells the two sources apart. The menu opens upward
  * because the toolbar is pinned to the bottom of the layer.
+ *
+ * With a remote (TV Mode, docs/tv-dpad.md section 4) the open list owns the
+ * keys: opening puts the highlight on the chosen server (or the first),
+ * Up/Down walk the list and stop at its ends, and Left, Right or Back close
+ * it onto the trigger. Its listener sits on `document`, ahead of the
+ * window-level navigation and the watch screen's Back, and marks every key
+ * it used as handled so neither acts on it too.
  */
 export const ServerMenu = ({
   options,
@@ -31,8 +40,10 @@ export const ServerMenu = ({
   onChooseTim?: (channel: TimChannel) => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const tv = useTvMode() === "on";
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const listId = useId();
   const best = bestMeasured(options);
   const activeSource = options.find((stream) => stream.streamId === activeStreamId) ?? null;
@@ -47,10 +58,22 @@ export const ServerMenu = ({
       if (rootRef.current?.contains(event.target as Node)) return;
       setOpen(false);
     };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+    const close = (event: KeyboardEvent) => {
+      event.preventDefault();
       setOpen(false);
       triggerRef.current?.focus();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (isBackKey(event)) return close(event);
+      if (!tv) return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") return close(event);
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      const items = [...(listRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      const next = items[current === -1 ? 0 : current + (event.key === "ArrowDown" ? 1 : -1)];
+      next?.focus({ preventScroll: true });
+      next?.scrollIntoView({ block: "nearest" });
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -58,7 +81,14 @@ export const ServerMenu = ({
       document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, tv]);
+
+  useEffect(() => {
+    if (!open || !tv) return;
+    const list = listRef.current;
+    const chosen = list?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ?? list?.querySelector("button");
+    chosen?.focus({ preventScroll: true });
+  }, [open, tv]);
 
   const caption = active === null ? "Servers" : active.name;
   const ariaLabel =
@@ -80,6 +110,7 @@ export const ServerMenu = ({
         aria-label={ariaLabel}
         title={active === null ? "Choose a stream server" : `Stream server ${active.name}`}
         onClick={() => setOpen((current) => !current)}
+        data-tv-default
       >
         <span className="server-menu-trigger-name">{caption}</span>
         {activeTim !== null ? <span className="watch-server-tag">TS</span> : null}
@@ -93,7 +124,7 @@ export const ServerMenu = ({
         <Icon className="server-menu-chevron" name="chevron-down" size={14} />
       </button>
       {open ? (
-        <div className="server-menu-list" id={listId} role="group" aria-label="Stream servers">
+        <div className="server-menu-list" id={listId} role="group" aria-label="Stream servers" ref={listRef}>
           {/* The second source sits at the very top of the list: its
               channels are whole-stage swaps, not in-frame switches, and
               the visitor scanning the list should meet them first. */}

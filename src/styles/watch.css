@@ -1556,3 +1556,115 @@ a.stream-route::after {
     animation: none;
   }
 }
+
+/* ---------- TV Mode: the remote surface (docs/tv-dpad.md) ---------- */
+/* Read from a sofa: every control carries its word, at least 56px tall at a
+   1280x720 viewport, on a solid bar (never over their ad banner), and the
+   highlighted one fills with the accent so it reads at a glance - an
+   outline alone vanished over bright frames in the 2026-10-23 repro. The
+   remote never needs the embed-mode pair or Zoom (the crop is forced on),
+   and our Full screen comes back because theirs is inside the frame. */
+.tv-label {
+  display: none;
+}
+
+html[data-tv="on"] .tv-label {
+  display: inline;
+}
+
+html[data-tv="on"] .player-embed-mode,
+html[data-tv="on"] .toolbar-zoom {
+  display: none;
+}
+
+html[data-tv="on"] .watch-toolbar .toolbar-fullscreen {
+  display: inline-flex;
+}
+
+html[data-tv="on"] .watch {
+  padding-bottom: 150px;
+}
+
+/* The floating toolbar must never sit over the picture: the frame is
+   capped so header (70px) + frame + toolbar (~110px with its offset) fit
+   the screen, trading the edge-to-edge width for an unobstructed view. */
+html[data-tv="on"] .player-shell {
+  width: min(100%, calc((100dvh - 180px) * 16 / 9));
+}
+
+/* The remote scrolls focus into view; the padding keeps the focused card
+   clear of the floating toolbar instead of tucked under it. */
+html[data-tv="on"] .watch-layer {
+  scroll-padding-block: 24px 130px;
+}
+
+html[data-tv="on"] .watch-toolbar,
+html[data-tv="on"] .watch-toolbar:hover,
+html[data-tv="on"] .watch-toolbar:focus-within {
+  gap: 10px;
+  padding: 10px;
+  border-radius: 22px;
+  background: var(--bg);
+}
+
+html[data-tv="on"] .watch-toolbar .toolbar-button,
+html[data-tv="on"] .watch-toolbar .button-primary,
+html[data-tv="on"] .watch-toolbar .button-tinted,
+html[data-tv="on"] .server-menu-trigger,
+html[data-tv="on"] .player-embed-bar .toolbar-button {
+  width: auto;
+  height: 56px;
+  padding: 0 20px;
+  gap: 10px;
+  border-radius: 14px;
+  font: var(--style-headline);
+  letter-spacing: var(--track-headline);
+}
+
+html[data-tv="on"] .watch-toolbar .toolbar-button svg,
+html[data-tv="on"] .player-embed-bar .toolbar-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+html[data-tv="on"] .server-menu {
+  max-width: min(320px, 46vw);
+}
+
+html[data-tv="on"] .server-menu-list {
+  max-width: min(360px, 70vw);
+  max-height: min(420px, 60vh);
+  gap: 6px;
+  padding: 8px;
+}
+
+html[data-tv="on"] .server-menu-list .watch-server {
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font: var(--style-headline);
+  letter-spacing: var(--track-headline);
+}
+
+html[data-tv="on"] .player-embed-bar {
+  gap: 10px;
+}
+
+html[data-tv="on"] .player-embed-bar .toolbar-button {
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+}
+
+html[data-tv="on"] .watch-toolbar :is(button, a):focus,
+html[data-tv="on"] .server-menu-list .watch-server:focus,
+html[data-tv="on"] .player-embed-bar .toolbar-button:focus,
+html[data-tv="on"] .watch-top .back-pill:focus {
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+}
+
+html[data-tv="on"] .server-menu-trigger:focus :is(.watch-server-quality, .server-menu-chevron, .watch-server-tag) {
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+}

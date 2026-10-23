@@ -235,7 +235,12 @@ export const MatchCard = ({
             {match.league.name} · {match.status.kind === "upcoming" ? kickoffLabel(match, true) : match.sport}
           </div>
         </div>
-        <button className="card-more" aria-label={`More about ${matchLabel(match)}`} onClick={() => onMore(match)}>
+        <button
+          className="card-more"
+          aria-label={`More about ${matchLabel(match)}`}
+          onClick={() => onMore(match)}
+          data-tv-skip
+        >
           <Icon name="more" size={16} />
         </button>
       </div>
@@ -388,12 +393,22 @@ export const Shelf = ({
           {children}
         </div>
         {!edges.start ? (
-          <button className="shelf-arrow shelf-arrow-start" onClick={() => page(-1)} aria-label={`Scroll ${title} back`}>
+          <button
+            className="shelf-arrow shelf-arrow-start"
+            onClick={() => page(-1)}
+            aria-label={`Scroll ${title} back`}
+            data-tv-skip
+          >
             <Icon name="chevron-left" />
           </button>
         ) : null}
         {!edges.end ? (
-          <button className="shelf-arrow shelf-arrow-end" onClick={() => page(1)} aria-label={`Scroll ${title} forward`}>
+          <button
+            className="shelf-arrow shelf-arrow-end"
+            onClick={() => page(1)}
+            aria-label={`Scroll ${title} forward`}
+            data-tv-skip
+          >
             <Icon name="chevron-right" />
           </button>
         ) : null}

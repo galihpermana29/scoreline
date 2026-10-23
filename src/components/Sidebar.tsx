@@ -9,6 +9,7 @@ import { Icon, type IconName } from "./icons";
 import { ScorelineBadge } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 import { TvModeToggle } from "./TvModeToggle";
+import { useTvMode } from "../lib/tvmode";
 
 const CATEGORY_ICON: Record<string, IconName> = {
   live: "live",
@@ -65,11 +66,18 @@ const SportGlyph = ({ sport }: { sport: string }) => (
  * navigates to the search screen live, so results appear under the field
  * as you type. The first keystroke pushes a history entry, the rest replace
  * it, so Back returns to where the search started, not through every letter.
+ * With a remote (TV Mode) the highlight passes through the field on its way
+ * up the sidebar, so arriving there must not leave the screen: OK opens
+ * search instead of focus.
  */
 const SearchField = ({ route, rail }: { route: Route; rail: boolean }) => {
   const query = route.kind === "search" ? route.query : "";
   const [value, setValue] = useState(query);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tv = useTvMode() === "on";
+  const openSearch = () => {
+    if (route.kind !== "search") navigate(browsePath({ kind: "search", query: value }), { keepScroll: true });
+  };
   useEffect(() => {
     if (route.kind !== "search") setValue("");
     else setValue(route.query);
@@ -101,10 +109,9 @@ const SearchField = ({ route, rail }: { route: Route; rail: boolean }) => {
         tabIndex={rail ? -1 : 0}
         autoComplete="off"
         onChange={(event) => onChange(event.target.value)}
-        onFocus={() => {
-          if (route.kind !== "search") navigate(browsePath({ kind: "search", query: value }), { keepScroll: true });
-        }}
+        onFocus={tv ? undefined : openSearch}
         onKeyDown={(event) => {
+          if (tv && event.key === "Enter") openSearch();
           if (event.key === "Escape") {
             onChange("");
             inputRef.current?.blur();
@@ -130,18 +137,21 @@ export const Sidebar = ({
   matches,
   rail,
   onToggle,
+  inert = false,
 }: {
   route: Route;
   matches: readonly Match[];
   rail: boolean;
   onToggle?: () => void;
+  /** Unreachable for now (a remote viewer on the watch screen). */
+  inert?: boolean;
 }) => {
   const [moreOpen, setMoreOpen] = useState(false);
   const extras = extraCategories(matches);
   const liveCount = matches.filter((match) => match.status.kind === "live").length;
 
   return (
-    <aside className={`sidebar${rail ? " is-rail" : ""}`} aria-label="Sections">
+    <aside className={`sidebar${rail ? " is-rail" : ""}`} aria-label="Sections" inert={inert || undefined}>
       <div className="sidebar-top">
         {onToggle ? (
           <button

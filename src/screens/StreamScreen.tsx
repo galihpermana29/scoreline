@@ -22,6 +22,9 @@ import { WatchLayerScrollContext } from "./WatchLayer";
 import { usePlayerHosts } from "../lib/usePlayerHosts";
 import { useNoAdMirrors } from "../lib/useNoAdMirrors";
 import { downloadCalendarEvent } from "../lib/calendar";
+import { useTvMode } from "../lib/tvmode";
+import { focusTvHome, isBackKey, tvFocusIsHome } from "../lib/tvnav";
+import { useTvFocusGuard } from "../lib/useTvFocusGuard";
 
 /**
  * The watch screen. It mirrors the feed's own deep-link shape
@@ -251,6 +254,11 @@ export const StreamScreen = ({
 }) => {
   const scored = match.homeScore !== null && match.awayScore !== null && match.status.kind !== "upcoming";
   const live = match.status.kind === "live";
+  // TV Mode is the remote contract (docs/tv-dpad.md): the video starts by
+  // itself, the highlight never leaves our chrome, and the toolbar trims
+  // to labelled controls a remote viewer needs.
+  const tv = useTvMode() === "on";
+  useTvFocusGuard(tv);
   // The welcome note's seen flag lives above `playing` because the very
   // first watch usually arrives through autoplay (the Watch card click):
   // an unseen visitor gets the note instead of the stream, and
@@ -647,6 +655,20 @@ export const StreamScreen = ({
   const layerScrollRef = useContext(WatchLayerScrollContext);
   usePlayerSnap(layerScrollRef, shellRef, !shellMaximized);
 
+  // The toolbar floats, so focusing it never scrolls: with a remote, the
+  // highlight reaching the controls or Back brings the picture back into
+  // view instead of leaving it scrolled away above the Also Live shelf.
+  useEffect(() => {
+    const layer = layerScrollRef?.current;
+    if (!tv || layer == null) return;
+    const onFocusIn = (event: FocusEvent) => {
+      if (!(event.target instanceof Element) || event.target.closest('[data-tv-row="controls"], [data-tv-row="top"]') === null) return;
+      layer.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    layer.addEventListener("focusin", onFocusIn);
+    return () => layer.removeEventListener("focusin", onFocusIn);
+  }, [tv, layerScrollRef]);
+
   // While maximized the shell must take every pixel - including the ones the
   // root-level sidebar (fixed, z 45) normally owns. The shell lives inside
   // the watch layer's stacking context (z 40), so no z on the shell itself
@@ -668,23 +690,53 @@ export const StreamScreen = ({
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
 
+  // Back leaves a maximized shell before it leaves the screen: the faux
+  // overlay on any keyboard, and native fullscreen too in TV Mode, where the
+  // remote's Back may not be a key the browser itself exits fullscreen on.
   useEffect(() => {
-    if (!isFaux) return;
+    if (!shellMaximized) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsFaux(false);
+      if (event.defaultPrevented || !isBackKey(event)) return;
+      if (isFaux) {
+        event.preventDefault();
+        setIsFaux(false);
+        return;
+      }
+      if (tv && document.fullscreenElement !== null) {
+        event.preventDefault();
+        void document.exitFullscreen().catch(() => {});
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isFaux]);
+  }, [shellMaximized, isFaux, tv]);
 
-  // The zoom crop's on/off: on by default, remembered across visits.
-  const [zoom, setZoom] = useState(() => {
+  // Remote focus follows the maximize switch: into the in-frame bar on the
+  // way in (it is the only chrome on screen), back to the toolbar's
+  // fullscreen button on the way out.
+  const wasMaximizedRef = useRef(false);
+  useEffect(() => {
+    if (!tv || wasMaximizedRef.current === shellMaximized) return;
+    const leaving = wasMaximizedRef.current;
+    wasMaximizedRef.current = shellMaximized;
+    const frame = window.requestAnimationFrame(() => {
+      const exit = leaving ? document.querySelector<HTMLElement>(".watch-toolbar .toolbar-fullscreen") : null;
+      focusTvHome(exit);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tv, shellMaximized]);
+
+  // The zoom crop's on/off: on by default, remembered across visits. TV
+  // Mode hides the toggle and always crops - a remembered "off" would
+  // otherwise also hide the ads guard, which only exists on the crop.
+  const [zoomPreference, setZoom] = useState(() => {
     try {
       return localStorage.getItem(PAGE_ZOOM_KEY) !== "0";
     } catch {
       return true;
     }
   });
+  const zoom = tv || zoomPreference;
   // The zoom kick (see PAGE_EMBED_KICK_DELAY_MS): while the crop is wanted,
   // the frame mounts shell-sized and jumps to the crop geometry once its
   // load events go quiet - the automatic version of the toolbar's Zoom
@@ -728,6 +780,10 @@ export const StreamScreen = ({
   // - only a provable improvement: the first entry (their default) has a
   //   measured quality and the best measured is strictly better. Anything
   //   unknown stays untouched - it might be good.
+  // TV Mode always starts (docs/tv-dpad.md section 1): their play button is
+  // inside the cross-origin frame where a remote can never reach it, and
+  // the posted switch is what starts their player - so the best measured
+  // server is picked, else the first listed one.
   const autoStartedRef = useRef(false);
   useEffect(() => {
     autoStartedRef.current = false;
@@ -753,19 +809,21 @@ export const StreamScreen = ({
     if (streamOptions.length === 0 || !embedSettled) return;
     const firstOption = streamOptions[0];
     if (firstOption === undefined) return;
-    const first = streamQuality(firstOption.name);
     const best = bestKnown;
-    if (first === null || best === null) return;
-    if (compareQuality(best.quality, first) <= 0) return;
+    if (!tv) {
+      const first = streamQuality(firstOption.name);
+      if (first === null || best === null) return;
+      if (compareQuality(best.quality, first) <= 0) return;
+    }
     // Highlight the chosen chip so the visitor sees what happened and can
     // pick another any time; their own server row inside the frame
     // re-syncs from the player's reply.
-    autoStartedRef.current = chooseStream(best.stream, "auto");
+    autoStartedRef.current = chooseStream(best?.stream ?? firstOption, "auto");
     // `embedLoads` re-runs this on every fresh document in the frame chain:
     // a switch posted to the entry page (no child frames yet) is not
     // delivered, and the attempt must re-arm when the mirror lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, embedMode, embedSettled, embedLoads, route?.matchId, streamOptions, activeStreamId, bestKnown, timChannel]);
+  }, [playing, embedMode, embedSettled, embedLoads, route?.matchId, streamOptions, activeStreamId, bestKnown, timChannel, tv]);
   const toggleZoom = () => {
     setZoom((current) => {
       try {
@@ -858,7 +916,9 @@ export const StreamScreen = ({
   useEffect(() => {
     if (!introOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIntroOpen(false);
+      if (!isBackKey(event)) return;
+      event.preventDefault();
+      setIntroOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -974,6 +1034,26 @@ export const StreamScreen = ({
     setIsFaux(true);
   };
 
+  // The remote's highlight on arrival and whenever the controls change shape
+  // (play/stop swaps the toolbar, the server list arrives, a notice opens):
+  // the default control (Servers while playing, Play Live while stopped)
+  // takes focus unless the viewer already moved somewhere reachable - a
+  // highlight this effect placed itself and the viewer never moved is
+  // re-homed, so the Servers button arriving after the list loads wins over
+  // the stopgap that had focus meanwhile. The focus guard is the net
+  // between these moments.
+  const hasServerMenu = playing && embedMode === "page" && (streamOptions.length > 0 || timChannels.length > 0);
+  const autoFocusedRef = useRef<Element | null>(null);
+  useEffect(() => {
+    if (!tv) return;
+    const frame = window.requestAnimationFrame(() => {
+      const untouched = autoFocusedRef.current !== null && document.activeElement === autoFocusedRef.current;
+      if (tvFocusIsHome() && !untouched) return;
+      if (focusTvHome()) autoFocusedRef.current = document.activeElement;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tv, playing, hasServerMenu, introOpen, embedFailures >= 2]);
+
   const flag = playing
     ? timMounted
       ? { label: "TS stream", tone: "live" as const, title: "A channel from the tim-streams second source is on stage, in its own player" }
@@ -1017,7 +1097,7 @@ export const StreamScreen = ({
       </div>
       {embedMode === "page" ? (
         <button
-          className={`toolbar-button${zoom ? " player-embed-mode-on" : ""}`}
+          className={`toolbar-button toolbar-zoom${zoom ? " player-embed-mode-on" : ""}`}
           onClick={toggleZoom}
           aria-label="Zoom"
           title={
@@ -1042,6 +1122,7 @@ export const StreamScreen = ({
           }
         >
           <Icon name={hideAds ? "shield-fill" : "shield"} size={16} />
+          <span className="tv-label">Ads guard</span>
         </button>
       ) : null}
       <button
@@ -1051,14 +1132,18 @@ export const StreamScreen = ({
         title="Reload the whole page (feed, host lookups and the embed all start clean) - the TV-friendly way to refresh"
       >
         <Icon name="refresh" size={14} />
+        <span className="tv-label">Refresh</span>
       </button>
       {/* Parked in the floating toolbar (watch.css .toolbar-fullscreen,
           2026-10-18): the embedded player now exposes its own fullscreen.
           The handler stays, and this same button is still the exit while
-          our shell is already maximized. */}
+          our shell is already maximized. TV Mode shows it again: their
+          player's own fullscreen is inside the frame, out of the remote's
+          reach. */}
       <button
         className="toolbar-button toolbar-fullscreen"
         onClick={toggleFullscreen}
+        data-tv-default={shellMaximized || undefined}
         aria-label={shellMaximized ? "Exit fullscreen" : "Fullscreen"}
         title={
           shellMaximized
@@ -1067,6 +1152,7 @@ export const StreamScreen = ({
         }
       >
         <Icon name={shellMaximized ? "fullscreen-exit" : "fullscreen"} size={16} />
+        <span className="tv-label">{shellMaximized ? "Exit full screen" : "Full screen"}</span>
       </button>
       <button
         className="toolbar-button"
@@ -1075,14 +1161,19 @@ export const StreamScreen = ({
         title="Stop the live embed and return to the simulated player"
       >
         <Icon name="stop" size={14} />
+        <span className="tv-label">Stop</span>
       </button>
     </>
   );
 
+  // `data-tv-scope` / `data-tv-row` are the remote's map (lib/tvnav.ts):
+  // top bar, stage notices, controls, Also Live - nothing else on this
+  // screen (the player frame, the source link) is ever visited.
   return (
-    <div className="watch">
+    <div className="watch" data-tv-scope>
       <motion.header
         className="watch-top"
+        data-tv-row="top"
         initial={layoutId ? { opacity: 0 } : false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3, delay: layoutId ? 0.1 : 0 }}
@@ -1208,7 +1299,11 @@ export const StreamScreen = ({
               {/* In fullscreen the toolbar below is off screen, so the
                   controls ride inside the frame for the duration. The faux
                   overlay covers the toolbar's lane too, so it shares this. */}
-              {shellMaximized ? <div className="player-embed-bar">{embedControls}</div> : null}
+              {shellMaximized ? (
+                <div className="player-embed-bar" data-tv-scope data-tv-row="fullscreen">
+                  {embedControls}
+                </div>
+              ) : null}
               {/* The faux overlay on a portrait phone shows a landscape video
                   letterboxed; the hint hands the visitor the bigger picture. */}
               {isFaux ? (
@@ -1236,7 +1331,7 @@ export const StreamScreen = ({
                   unsandboxed their popunder eats the first trusted click
                   and every re-armed later one (AGENTS.md dated facts). */}
               {timMounted && !timFallback && timHintOpen ? (
-                <div className="player-embed-denied player-tim-notice" role="status">
+                <div className="player-embed-denied player-tim-notice" role="status" data-tv-row="stage">
                   <span className="player-tim-notice-text">
                     Second-source stream with their ads blocked. Not playing?
                   </span>
@@ -1257,7 +1352,7 @@ export const StreamScreen = ({
                 </div>
               ) : null}
               {timMounted && timFallback && timNoticeOpen ? (
-                <div className="player-embed-denied player-tim-notice" role="status">
+                <div className="player-embed-denied player-tim-notice" role="status" data-tv-row="stage">
                   <span className="player-tim-notice-text">
                     Second-source stream without the ad block: the first play click may open an ad tab. Close it and click play again.
                   </span>
@@ -1272,7 +1367,7 @@ export const StreamScreen = ({
               ) : null}
             </>
           ) : playing ? (
-            <div className="player-embed-failed">
+            <div className="player-embed-failed" data-tv-row="stage">
               <Notice
                 icon="📡"
                 title="Live source unreachable"
@@ -1382,6 +1477,7 @@ export const StreamScreen = ({
                 className="watch-toolbar"
                 role="toolbar"
                 aria-label="Player controls"
+                data-tv-row="controls"
                 initial={{ opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ type: "spring", bounce: 0.16, duration: 0.55, delay: layoutId ? 0.22 : 0.05 }}
@@ -1402,7 +1498,7 @@ export const StreamScreen = ({
               </>
             ) : (
               <>
-                <button className="button-primary" onClick={startEmbed}>
+                <button className="button-primary" onClick={startEmbed} data-tv-default>
                   <Icon name="play" size={14} />
                   {live ? "Play Live" : "Open Stream"}
                 </button>
@@ -1498,11 +1594,13 @@ export const StreamScreen = ({
         </dl>
 
         {related.length > 0 ? (
-          <Shelf title="Also Live" count={related.length}>
-            {related.map((other) => (
-              <MatchCard key={other.id} match={other} layoutId={`art-related-${other.id}`} onOpen={onOpen} onMore={onMore} />
-            ))}
-          </Shelf>
+          <div data-tv-row="related">
+            <Shelf title="Also Live" count={related.length}>
+              {related.map((other) => (
+                <MatchCard key={other.id} match={other} layoutId={`art-related-${other.id}`} onOpen={onOpen} onMore={onMore} />
+              ))}
+            </Shelf>
+          </div>
         ) : null}
       </motion.div>
     </div>
