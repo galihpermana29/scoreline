@@ -1,4 +1,4 @@
-import { motion, useDragControls, useMotionValue, useTransform, type PanInfo } from "motion/react";
+import { motion, useDragControls, useIsPresent, useMotionValue, useTransform, type PanInfo } from "motion/react";
 import { createContext, useRef, type ReactNode, type RefObject } from "react";
 
 /** The watch layer element, which is the scroll container for the watch screen. */
@@ -25,6 +25,9 @@ export const WatchLayer = ({ phone, onDismiss, children }: { phone: boolean; onD
   const width = typeof window === "undefined" ? 480 : window.innerWidth;
   const scrimOpacity = useTransform(x, [0, width], [0.55, 0]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // While the exit animation plays the layer is still in the DOM; inert
+  // hands focus and the remote back to the browse surface immediately.
+  const exiting = !useIsPresent();
 
   const onDragEnd = (_: unknown, info: PanInfo) => {
     if (info.offset.x > 110 || info.velocity.x > 550) onDismiss();
@@ -37,6 +40,7 @@ export const WatchLayer = ({ phone, onDismiss, children }: { phone: boolean; onD
         <motion.div
           ref={scrollRef}
           className="watch-layer watch-layer-phone"
+          inert={exiting || undefined}
           style={{ x }}
           initial={{ x: width }}
           animate={{ x: 0 }}
@@ -58,7 +62,7 @@ export const WatchLayer = ({ phone, onDismiss, children }: { phone: boolean; onD
 
   return (
     <WatchLayerScrollContext.Provider value={scrollRef}>
-      <div ref={scrollRef} className="watch-layer">
+      <div ref={scrollRef} className="watch-layer" inert={exiting || undefined}>
         <motion.div
           className="watch-backdrop"
           initial={{ opacity: 0 }}

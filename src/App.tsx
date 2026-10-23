@@ -14,7 +14,7 @@ import { navigate, useLocation, type BrowseRoute, type Route } from "./lib/route
 import { useAsync } from "./lib/useAsync";
 import { useMediaQuery } from "./lib/useMediaQuery";
 import { useTvMode } from "./lib/tvmode";
-import { useTvNavigation } from "./lib/tvnav";
+import { isBackKey, useTvNavigation } from "./lib/tvnav";
 import { CategoryScreen } from "./screens/CategoryScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LeaguesScreen } from "./screens/LeaguesScreen";
@@ -170,15 +170,35 @@ export const App = () => {
   useEffect(() => {
     if (watching === null) return;
     const onKey = (event: KeyboardEvent) => {
-      // The watch screen's faux fullscreen (no-API phones and refused
-      // requests) has no browser-level Esc handling, so it owns the first
-      // Esc itself - the layer only closes once the shell has shrunk back.
+      // One Back, one step (docs/tv-dpad.md section 7): an open menu
+      // (already handled) or dialog closes first, then the watch screen's
+      // faux fullscreen (no-API phones and refused requests, no
+      // browser-level Esc handling) shrinks back - the layer closes last.
+      if (!isBackKey(event) || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]') !== null) return;
       if (document.fullscreenElement === null && document.querySelector(".player-shell-fs") !== null) return;
-      if (event.key === "Escape" && document.fullscreenElement === null && selected === null) exitWatch();
+      if (document.fullscreenElement !== null || selected !== null) return;
+      event.preventDefault();
+      exitWatch();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [watching !== null, selected]);
+
+  // Leaving a match with the remote lands back on the card that opened it
+  // (or its re-rendered twin), so the next arrow press has a visible start.
+  const browseFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const opener = browseFocus.current;
+    if (watching !== null || tv !== "on" || opener === null) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement?.closest(".content") != null) return;
+      const label = opener.getAttribute("aria-label");
+      const twin = label === null ? null : document.querySelector<HTMLElement>(`.content [aria-label="${CSS.escape(label)}"]`);
+      (opener.isConnected ? opener : twin)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [watching !== null, tv]);
 
   /**
    * Opening a match: watchable fixtures go straight to the watch screen in
@@ -194,6 +214,8 @@ export const App = () => {
         return;
       }
       setSelected(null);
+      const opener = document.activeElement;
+      if (opener instanceof HTMLElement && opener.closest(".content") !== null) browseFocus.current = opener;
       navigate(href, { origin: phone ? undefined : layoutId, autoplay: true });
     },
     [phone],
@@ -310,7 +332,18 @@ export const App = () => {
           .filter(Boolean)
           .join(" ")}
       >
-        {phone ? null : <Sidebar route={shellRoute} matches={feed.matches} rail={sidebar.rail} onToggle={sidebar.toggle} />}
+        {/* With a remote the sidebar is off limits while watching: one Enter
+            there left the match, flipped dark mode or turned TV Mode off
+            (2026-10-23 repro, docs/tv-dpad.md section 3). */}
+        {phone ? null : (
+          <Sidebar
+            route={shellRoute}
+            matches={feed.matches}
+            rail={sidebar.rail}
+            onToggle={sidebar.toggle}
+            inert={tv === "on" && watching !== null}
+          />
+        )}
 
         <main className="content" inert={watching !== null ? true : undefined}>
           {showBrowse ? (
