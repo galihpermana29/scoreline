@@ -17,6 +17,12 @@ Where the build differs from the brief below:
 - Back is `Escape`, `GoBack` or `BrowserBack` (`isBackKey` in `tvnav.ts`); what the user's TV app actually sends is not recorded yet.
 - Two additions: leaving a match puts focus back on the card that opened it, and the watch layer is `inert` during its exit animation so its guard cannot pull focus back into a layer that is going away.
 
+On the TV (same evening, `adb shell input keyevent` against production):
+the app is `sbs.scoreline.tv`, a full-screen WebView on the live site with `ScorelineTV/` in its user agent (TV Mode now defaults on there).
+Arrival focus, the guard, row navigation and the menu all held.
+Back never reached the page: the app took `KEYCODE_BACK` and went back in history, so an open menu left the match; the app now offers Back to the page as an `Escape` keydown first and only goes back when the page does not `preventDefault`.
+The auto-start was dropped once on the slow WebView (posted before their player listened; the same pick by hand started it), so in TV Mode the pick is re-sent until their player takes focus, the only playback signal the frame gives.
+
 ## Who this is for
 
 The real user is a viewer in her 50s on a TV app that forwards the remote's arrows and OK as key events (unlike TVBro and the TCL browser, where the remote drives a cursor and no key ever reaches the page).
