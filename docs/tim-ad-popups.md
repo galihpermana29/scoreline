@@ -4,9 +4,29 @@ A proposal for an agent with an empty context window, written after a live inves
 Read `AGENTS.md` first, in particular the 2026-10-18 evening tim-streams facts and the night correction that follows them.
 Scope is the tim channel mount on the watch screen (`src/screens/StreamScreen.tsx`), nothing else.
 
+## Update 2026-11-25: the sandbox is dead, the mount is unsandboxed again
+
+The sandboxed mount this doc shipped was killed by the operator's next move, and the fix (branch `cursor/tim-plum-unsandbox`) reverts the tim iframe to the unsandboxed mount.
+What changed on their side, all re-derived live from a current play page (evidence under `.scratch/tim-streams/sandbox-2026-11-25/`):
+
+- Every play page now ships a new guard, `sandGuard` v2.1 (inline, obfuscated; deobfuscated to `deob-inline-1/deobfuscated.js`).
+ It keeps the old cross-origin checks (all still passing for `allow-scripts allow-same-origin`) and adds a verdict gate: stream playlist requests whose URL matches `/p/<id>` are queued while the gate is `"waiting"`, replayed when allowed, and rejected when denied.
+- A new probe, `/plum.js` + `/plum.wasm` (a Go program, 2MB), classifies the UA and - for anything that is not Android/iOS/old-Edge/Opera-Mobile/WebOS/NetCast/WhaleTV - appends a hidden 1px `<object data="data:application/pdf;base64,aG1t">`.
+ A browser whose PDF viewer boots the object swallows it and the probe publishes `plugin-present`; when the object's `onerror` fires instead, it calls `window.sandDetect('pdf-object')` and the guard nukes the page to a black stub with red `SANDBOX DETECTED` monospace text (the reproduced screenshot).
+- Chromium's built-in PDF viewer cannot boot inside any sandboxed iframe.
+ Measured locally with an exact replica of their object: unsandboxed loads, `allow-scripts allow-same-origin` errors, and a kitchen-sink of every `allow-*` token still errors - so **no sandbox attribute value can pass the probe**; `allow-plugins` changes nothing.
+- Live rig results, same stream back to back: the shipped tokens nuke with `gate: "denied:pdf-object"`; unsandboxed answers `plugin-present` and plays 1920x1080 through pause/play clicks (0 ad tabs that session - their ad-zone config is era-dependent; the 2026-10-18 unsandboxed measurement of 10 tabs in 11 clicks is the design assumption).
+- Phones and TV UAs are in the probe's skip list, so the TV app never hit this; desktop Chromium did.
+
+Handling, per the escalation ladder: drop the broken embed, fall back to what still works.
+The tim iframe mounts unsandboxed (exactly like their own watch page), the "Not playing? Load with their ads" affordance is deleted (there is no sandboxed mode to escape from), and the dismissible ad-tab warning shows on every tim mount.
+The parent still cannot block their popups for an unsandboxed cross-origin frame - that was measured true on 2026-10-18 and nothing changed.
+Re-verification on any future operator change means driving a current stream URL through the rig (`plum-probe.mjs`) and checking for `nuked: true`.
+
 ## TL;DR
 
 Shipped 2026-10-18 late evening (branch `cursor/tim-ad-sandbox`); the dated fact in `AGENTS.md` records the live result.
+Superseded 2026-11-25 by the section above - read on for the mechanism.
 The original proposal reads on unchanged below.
 
 The shipped handling (`docs/tim-extra-streams.md`, mount rules and ad notice) rested on one claim that turned out to be false: "sandboxing the frame kills tim's player outright".
