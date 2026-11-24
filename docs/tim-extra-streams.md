@@ -57,23 +57,22 @@ All in `src/screens/StreamScreen.tsx`, additive:
 - Clicking a tim entry **swaps the whole stage** - there is no postMessage contract into tim's player.
  It unmounts the source embed and mounts the tim stream URL in its own iframe.
  Clicking a source entry swaps back: the source embed remounts fresh (same machinery as a mode switch, bumping `embedEpoch`), the clicked server is recorded as a pending choice and delivered via the existing `postStreamSwitch` once the mirror has settled (the `embedSettled` signal the auto-start already waits on).
-- The tim iframe mount rules are hard requirements from their decoded guard, corrected 2026-10-18 night (`docs/tim-ad-popups.md`):
- `sandbox="allow-scripts allow-same-origin"` (the source frame's exact tokens - their guard's sandbox check reads `frameElement`, dead code across origins, and every check that does run passes with `allow-same-origin`), `allow="autoplay; encrypted-media; picture-in-picture; fullscreen"`, and the default referrer policy (never a no-referrer one - an empty `document.referrer` kills their player).
- Never add `allow-popups`, `allow-popups-to-escape-sandbox` or `allow-top-navigation` - those tokens are exactly what their ad script uses.
+- The tim iframe mount rules are hard requirements, re-derived live 2026-11-25 (`docs/tim-ad-popups.md`):
+ **no `sandbox` attribute at all** (their guard's WASM probe injects a hidden PDF `<object>` and nukes the page as `SANDBOX DETECTED` when the browser's PDF viewer cannot boot; Chromium's PDF viewer cannot boot inside any sandboxed frame, verified with every allow-token), `allow="autoplay; encrypted-media; picture-in-picture; fullscreen"`, and the default referrer policy (never a no-referrer one - an empty `document.referrer` kills their player).
+ The old 2026-10-18 sandboxed mount (and its "Load with their ads" escape hatch) is deleted; no sandbox token set passes the probe.
  Do not reuse the source iframe element; a separate mount is the whole point.
 - The tim player fills its frame, so none of the page-mode machinery applies to it: no zoom crop, no kick cover, no mask bars, no ads-guard probe.
  Suppress the source load watchdog while the tim frame is on stage (its 15s stall logic would pointlessly remount the hidden source pipeline).
 - State handling: stop, embed-mode switch and retry all drop a mounted tim channel; the auto-best-server logic stays source-only and never fires while a tim channel is mounted; the stream flag reads distinctly (for example label `TS stream`) so the visitor can tell what is on stage.
-- Ad popups (`docs/tim-ad-popups.md`): the sandboxed default blocks every ad tab, and the cross-origin refusal their player could someday mount is a silent still frame - so while the sandboxed frame is on stage, show a quiet dismissible affordance ("Not playing? Load with their ads") that remounts the current channel unsandboxed for this mount only.
- That fallback mount alone is unsandboxed and carries the dismissible ad-tab warning (their popunder eats the first trusted click and every re-armed later one).
- Picking another channel, swapping back, stop/play and retry all return to the sandboxed default; nothing is persisted.
+- Ad popups (`docs/tim-ad-popups.md`): the sandbox that used to block every ad tab is gone (the operator's PDF probe made it unpassable), so the tim frame mounts unsandboxed and the dismissible ad-tab warning shows on every tim mount - their popunder eats the first trusted click and every re-armed later one.
+ Picking another channel or swapping back remounts and re-shows the warning; nothing is persisted.
 - The menu's phone behaviour stays inside the existing toolbar dropdown; no new sections may disturb the phone per-child-inset contract documented for `.watch`.
 
 ## Out of scope
 
 - No home-screen or card-level indicators that a match has tim channels (phase 2).
 - No motorsport/combat matching, no vip streams, no native stream extraction.
-- No ads-guard equivalents for tim; the sandbox plus the fallback affordance is the handling (`docs/tim-ad-popups.md`).
+- No ads-guard equivalents for tim; the unsandboxed mount plus the ad-tab warning is the handling (`docs/tim-ad-popups.md`).
 - No changes to quality measurement, auto-start, or the Convex alert pipeline.
 
 ## Verification
@@ -81,9 +80,8 @@ All in `src/screens/StreamScreen.tsx`, additive:
 - `npm run typecheck`.
 - Add `SCORELINE_TIM_API_HOSTS` to local `.env` and to Vercel's project env; confirm `/api/config` returns it.
 - In the dev app (port 5188), open a match with tim channels, pick a `TS` entry at the top of the menu:
- the frame boots JWPlayer, a real click starts video without opening any ad tab, further clicks pause and resume, and the quiet "Not playing?" affordance is there (watch the tab strip for at least two minutes and ten clicks);
-  - the "Load with their ads" affordance remounts unsandboxed with the warning notice, the first click opens an ad tab (expected), and picking another channel or stop/play returns to the sandboxed default with no warning;
-  - clicking a source entry swaps back, the source remounts, the pending server choice lands on the settled mirror, and the chip highlight and the in-frame server row agree;
+ the frame boots JWPlayer, the ad-tab warning is showing (dismiss it), a real click starts video, further clicks pause and resume (an ad tab may eat a click - that is the accepted cost; watch the tab strip over a two-minute soak);
+  - clicking a source entry swaps back, the source remounts, the pending server choice lands on the settled mirror, and the chip highlight and the in-frame server row agree; picking the `TS` entry again remounts the tim frame with the warning back;
   - an unmatched match shows no menu changes at all (no divider, no `TS` entries, no `Source` divider on a match that has source servers - the source list renders exactly as before);
   - stop/play, embed-mode toggle, zoom, ads guard, fullscreen and the auto-best start still behave exactly as before on a source-only match.
 - Update `AGENTS.md` dated facts with anything newly verified during this build.
